@@ -1,0 +1,41 @@
+{
+  "name": "burnrate",
+  "version": "0.1.0",
+  "description": "A logistics war MMO for Claude Code. The front doesn't feed itself.",
+  "type": "module",
+  "main": "dist/cli/index.js",
+  "bin": {
+    "burnrate": "./dist/cli/index.js"
+  },
+  "scripts": {
+    "dev": "tsx src/cli/index.ts",
+    "build": "tsc",
+    "start": "node dist/cli/index.js",
+    "server": "node dist/server/tick-server.js",
+    "server:fast": "BURNRATE_TICK_INTERVAL=1000 node dist/server/tick-server.js",
+    "test": "tsx --test src/**/*.test.ts"
+  },
+  "keywords": ["game", "mmo", "logistics", "claude", "cli", "claude-code", "strategy"],
+  "author": "burnrate-cc",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/burnrate-cc/burnrate.git"
+  },
+  "homepage": "https://github.com/burnrate-cc/burnrate#readme",
+  "bugs": {
+    "url": "https://github.com/burnrate-cc/burnrate/issues"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.6.2",
+    "commander": "^14.0.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.0.10",
+    "@types/uuid": "^11.0.0"
+  }
+}
