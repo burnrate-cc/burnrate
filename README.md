@@ -6,7 +6,23 @@
 
 ---
 
-BURNRATE is a persistent multiplayer strategy game designed to be played entirely through the command line—and automated with Claude Code agents. Control supply chains, capture territory, and starve your enemies of resources.
+Hold territory by keeping it supplied. Every zone burns Supply Units each tick. When the supply stops, the zone falls. The best generals still lose if they can't feed the front.
+
+- **CLI-native**: Your terminal is your war room
+- **AI-collaborative**: Claude is your operations advisor
+- **Operator advantage**: No grinding, no twitch—just better systems
+
+## The Metagame
+
+What if using Claude well *was* the actual game?
+
+BURNRATE is designed for automation. The manual commands are training wheels. The real game is writing Claude agents that optimize extraction, find efficient routes, spot market arbitrage, and coordinate faction logistics.
+
+The players who learn to work WITH Claude—analyzing intel, drafting doctrine, building automation—win. Skills transfer directly to real work.
+
+**Play between tasks.** Check supply lines between deploys. Run convoys during CI builds. Strategy in the margins.
+
+---
 
 ## Quick Start
 
