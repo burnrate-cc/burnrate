@@ -128,6 +128,14 @@ class GameAPIClient {
     return this.request('POST', '/capture');
   }
 
+  async depositStockpile(resource: string, amount: number) {
+    return this.request('POST', '/stockpile', { resource, amount });
+  }
+
+  async getZoneEfficiency(zoneId: string) {
+    return this.request('GET', `/zone/${zoneId}/efficiency`);
+  }
+
   async getUnits() {
     return this.request('GET', '/units');
   }
@@ -485,6 +493,29 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         name: 'burnrate_capture',
         description: 'Capture your current zone for your faction. Zone must be neutral or collapsed.',
         inputSchema: { type: 'object', properties: {}, required: [] }
+      },
+      {
+        name: 'burnrate_stockpile',
+        description: 'Deposit medkits or comms to your current zone stockpile. Medkits boost combat defense, comms degrade enemy scans.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            resource: { type: 'string', enum: ['medkits', 'comms'], description: 'Resource to stockpile' },
+            amount: { type: 'number', description: 'Amount to deposit' }
+          },
+          required: ['resource', 'amount']
+        }
+      },
+      {
+        name: 'burnrate_zone_efficiency',
+        description: 'View zone efficiency bonuses including raid resistance, capture defense, production bonus, medkit bonus, and comms defense.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            zoneId: { type: 'string', description: 'Zone ID to check' }
+          },
+          required: ['zoneId']
+        }
       },
       {
         name: 'burnrate_units',
@@ -891,6 +922,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'burnrate_capture':
         result = await client.capture();
+        break;
+
+      case 'burnrate_stockpile':
+        result = await client.depositStockpile(args?.resource as string, args?.amount as number);
+        break;
+
+      case 'burnrate_zone_efficiency':
+        result = await client.getZoneEfficiency(args?.zoneId as string);
         break;
 
       case 'burnrate_units':

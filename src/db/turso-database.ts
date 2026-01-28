@@ -84,7 +84,9 @@ export class TursoDatabase {
         inventory TEXT NOT NULL DEFAULT '{}',
         production_capacity INTEGER NOT NULL DEFAULT 0,
         garrison_level INTEGER NOT NULL DEFAULT 0,
-        market_depth REAL NOT NULL DEFAULT 1.0
+        market_depth REAL NOT NULL DEFAULT 1.0,
+        medkit_stockpile INTEGER NOT NULL DEFAULT 0,
+        comms_stockpile INTEGER NOT NULL DEFAULT 0
       )`,
 
       // Routes
@@ -308,11 +310,13 @@ export class TursoDatabase {
     const id = uuid();
     await this.client.execute({
       sql: `INSERT INTO zones (id, name, type, owner_id, supply_level, burn_rate, compliance_streak,
-                               su_stockpile, inventory, production_capacity, garrison_level, market_depth)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                               su_stockpile, inventory, production_capacity, garrison_level, market_depth,
+                               medkit_stockpile, comms_stockpile)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [id, zone.name, zone.type, zone.ownerId, zone.supplyLevel, zone.burnRate,
              zone.complianceStreak, zone.suStockpile, JSON.stringify(zone.inventory),
-             zone.productionCapacity, zone.garrisonLevel, zone.marketDepth]
+             zone.productionCapacity, zone.garrisonLevel, zone.marketDepth,
+             zone.medkitStockpile, zone.commsStockpile]
     });
     return { id, ...zone };
   }
@@ -341,6 +345,8 @@ export class TursoDatabase {
     if (updates.suStockpile !== undefined) { sets.push('su_stockpile = ?'); values.push(updates.suStockpile); }
     if (updates.inventory !== undefined) { sets.push('inventory = ?'); values.push(JSON.stringify(updates.inventory)); }
     if (updates.garrisonLevel !== undefined) { sets.push('garrison_level = ?'); values.push(updates.garrisonLevel); }
+    if (updates.medkitStockpile !== undefined) { sets.push('medkit_stockpile = ?'); values.push(updates.medkitStockpile); }
+    if (updates.commsStockpile !== undefined) { sets.push('comms_stockpile = ?'); values.push(updates.commsStockpile); }
 
     if (sets.length === 0) return;
     values.push(id);
@@ -363,7 +369,9 @@ export class TursoDatabase {
       inventory: JSON.parse(row.inventory as string),
       productionCapacity: row.production_capacity as number,
       garrisonLevel: row.garrison_level as number,
-      marketDepth: row.market_depth as number
+      marketDepth: row.market_depth as number,
+      medkitStockpile: (row.medkit_stockpile as number) || 0,
+      commsStockpile: (row.comms_stockpile as number) || 0
     };
   }
 
@@ -1270,6 +1278,55 @@ export class TursoDatabase {
     });
 
     return { seasonNumber: season.seasonNumber, newWeek };
+  }
+
+  /**
+   * Reset the game world for a new season.
+   * Archives scores, resets zones/inventories, preserves accounts/licenses/factions.
+   */
+  async seasonReset(newSeasonNumber: number): Promise<void> {
+    // Reset all zones to neutral defaults
+    await this.client.execute(
+      `UPDATE zones SET owner_id = NULL, supply_level = 100, compliance_streak = 0,
+       su_stockpile = 0, inventory = '{}', garrison_level = 0,
+       medkit_stockpile = 0, comms_stockpile = 0`
+    );
+
+    // Reset player inventories/credits, preserve accounts/licenses/factions
+    const startingInventory = JSON.stringify({ ...emptyInventory(), credits: 500 });
+    await this.client.execute({
+      sql: `UPDATE players SET inventory = ?, actions_today = 0, last_action_tick = 0,
+            reputation = CAST(reputation * 0.5 AS INTEGER)`,
+      args: [startingInventory]
+    });
+
+    // Clear all active shipments
+    await this.client.execute(`DELETE FROM shipments`);
+
+    // Clear all units
+    await this.client.execute(`DELETE FROM units`);
+
+    // Clear all market orders
+    await this.client.execute(`DELETE FROM market_orders`);
+
+    // Clear all active contracts
+    await this.client.execute(`DELETE FROM contracts WHERE status IN ('open', 'accepted')`);
+
+    // Clear all intel
+    await this.client.execute(`DELETE FROM intel`);
+
+    // Reset faction treasuries
+    const emptyTreasury = JSON.stringify(emptyInventory());
+    await this.client.execute({
+      sql: `UPDATE factions SET treasury = ?`,
+      args: [emptyTreasury]
+    });
+
+    // Advance to new season
+    await this.client.execute({
+      sql: 'UPDATE world SET season_number = ?, season_week = 1 WHERE id = 1',
+      args: [newSeasonNumber]
+    });
   }
 
   private rowToSeasonScore(row: any): SeasonScore {

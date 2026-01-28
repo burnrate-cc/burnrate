@@ -387,6 +387,42 @@ app.post('/capture', authMiddleware, async (c) => {
   return c.json({ success: true });
 });
 
+// Deposit medkits or comms to zone stockpile
+app.post('/stockpile', authMiddleware, writeRateLimitMiddleware(), async (c) => {
+  const playerId = getPlayerId(c);
+  const body = await c.req.json();
+  const resource = body.resource as 'medkits' | 'comms';
+  const amount = body.amount as number;
+
+  if (!resource || !['medkits', 'comms'].includes(resource)) {
+    throw new ValidationError(`resource must be 'medkits' or 'comms'`);
+  }
+  if (!amount || amount < 1 || !Number.isInteger(amount)) {
+    throw new ValidationError('amount must be a positive integer');
+  }
+
+  const player = await db.getPlayer(playerId);
+  if (!player) throw new NotFoundError('Player', playerId);
+
+  const result = await engine.depositStockpile(playerId, player.locationId, resource, amount);
+  if (!result.success) {
+    throw new GameError(ErrorCodes.INSUFFICIENT_RESOURCES, result.error || 'Stockpile deposit failed');
+  }
+
+  return c.json({ success: true });
+});
+
+// Get zone efficiency details
+app.get('/zone/:zoneId/efficiency', authMiddleware, async (c) => {
+  const zoneId = c.req.param('zoneId');
+  const result = await engine.getZoneEfficiency(zoneId);
+  if (!result.success) {
+    throw new NotFoundError('Zone', zoneId);
+  }
+
+  return c.json({ success: true, efficiency: result.efficiency });
+});
+
 // ============================================================================
 // UNITS
 // ============================================================================

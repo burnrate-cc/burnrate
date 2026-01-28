@@ -119,15 +119,103 @@ export interface Zone {
 
   /** Market depth multiplier */
   marketDepth: number;
+
+  /** Medkit stockpile for combat bonuses */
+  medkitStockpile: number;
+
+  /** Comms stockpile for intel defense */
+  commsStockpile: number;
 }
 
-export type SupplyState = 'supplied' | 'strained' | 'critical' | 'collapsed';
+export type SupplyState = 'fortified' | 'supplied' | 'strained' | 'critical' | 'collapsed';
 
-export function getSupplyState(supplyLevel: number): SupplyState {
+export function getSupplyState(supplyLevel: number, complianceStreak: number = 0): SupplyState {
+  if (supplyLevel >= 100 && complianceStreak >= 50) return 'fortified';
   if (supplyLevel >= 100) return 'supplied';
   if (supplyLevel >= 50) return 'strained';
   if (supplyLevel > 0) return 'critical';
   return 'collapsed';
+}
+
+/** Front efficiency: bonuses from supply level and compliance streak */
+export interface ZoneEfficiency {
+  /** Supply state label */
+  state: SupplyState;
+  /** Multiplier for raid resistance (higher = harder to raid) */
+  raidResistance: number;
+  /** Multiplier for capture difficulty (higher = harder to capture) */
+  captureDefense: number;
+  /** Production bonus (0.0 = none, 0.2 = +20%) */
+  productionBonus: number;
+  /** Medkit combat bonus (reduces unit attrition) */
+  medkitBonus: number;
+  /** Comms intel bonus (reduces enemy scan quality) */
+  commsDefense: number;
+}
+
+/** Calculate zone efficiency from supply state, streak, and stockpiles */
+export function getZoneEfficiency(
+  supplyLevel: number,
+  complianceStreak: number,
+  medkitStockpile: number = 0,
+  commsStockpile: number = 0
+): ZoneEfficiency {
+  const state = getSupplyState(supplyLevel, complianceStreak);
+
+  // Base values by supply state
+  let raidResistance = 1.0;
+  let captureDefense = 1.0;
+  let productionBonus = 0.0;
+
+  switch (state) {
+    case 'fortified':
+      raidResistance = 1.5;
+      captureDefense = 1.5;
+      productionBonus = 0.1;
+      break;
+    case 'supplied':
+      raidResistance = 1.0;
+      captureDefense = 1.0;
+      productionBonus = 0.0;
+      break;
+    case 'strained':
+      raidResistance = 0.75;
+      captureDefense = 0.75;
+      productionBonus = 0.0;
+      break;
+    case 'critical':
+      raidResistance = 0.5;
+      captureDefense = 0.25;
+      productionBonus = 0.0;
+      break;
+    case 'collapsed':
+      raidResistance = 0.0;
+      captureDefense = 0.0;
+      productionBonus = 0.0;
+      break;
+  }
+
+  // Compliance streak bonuses (stacking on top of fortified)
+  if (complianceStreak >= 500) {
+    raidResistance += 0.5;
+    captureDefense += 0.5;
+    productionBonus += 0.2;
+  } else if (complianceStreak >= 200) {
+    raidResistance += 0.25;
+    captureDefense += 0.25;
+    productionBonus += 0.1;
+  } else if (complianceStreak >= 50) {
+    raidResistance += 0.1;
+    captureDefense += 0.1;
+  }
+
+  // Medkit stockpile → combat bonus (diminishing returns, cap at +50%)
+  const medkitBonus = Math.min(0.5, medkitStockpile * 0.02);
+
+  // Comms stockpile → intel defense (diminishing returns, cap at +50%)
+  const commsDefense = Math.min(0.5, commsStockpile * 0.025);
+
+  return { state, raidResistance, captureDefense, productionBonus, medkitBonus, commsDefense };
 }
 
 /** Burn rates by zone type */
@@ -680,7 +768,8 @@ export type GameEventType =
   | 'faction_created'
   | 'faction_joined'
   | 'faction_left'
-  | 'player_action';
+  | 'player_action'
+  | 'stockpile_deposited';
 
 export interface GameEvent {
   id: string;

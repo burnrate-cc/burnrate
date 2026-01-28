@@ -6,7 +6,7 @@
 import { TursoDatabase } from '../db/turso-database.js';
 import {
   Zone, Route, Player, Shipment, Unit, MarketOrder, Contract,
-  GameEvent, getSupplyState, SHIPMENT_SPECS, SU_RECIPE,
+  GameEvent, getSupplyState, getZoneEfficiency, SHIPMENT_SPECS, SU_RECIPE,
   Inventory, Resource, emptyInventory, TIER_LIMITS,
   RECIPES, getFieldResource, IntelReportWithFreshness, ContractType,
   FactionRank, FACTION_PERMISSIONS, Faction, ShipmentType, LICENSE_REQUIREMENTS,
@@ -40,6 +40,11 @@ export class AsyncGameEngine {
 
     await this.processFieldRegeneration(tick);
 
+    // Stockpile decay: medkits decay every 10 ticks, comms every 20 ticks
+    if (tick % 10 === 0) {
+      await this.processStockpileDecay(tick);
+    }
+
     if (tick % 144 === 0) {
       await this.resetDailyActions();
     }
@@ -58,12 +63,13 @@ export class AsyncGameEngine {
       if (season.seasonWeek < SEASON_CONFIG.weeksPerSeason) {
         await this.db.advanceWeek();
       } else {
-        // End of season - advance to next season
-        await this.db.advanceSeason();
+        // End of season - archive scores and reset the world
+        const newSeasonNumber = season.seasonNumber + 1;
+        await this.db.seasonReset(newSeasonNumber);
         events.push(await this.recordEvent('tick', null, 'system', {
           type: 'season_end',
           endedSeason: season.seasonNumber,
-          newSeason: season.seasonNumber + 1
+          newSeason: newSeasonNumber
         }));
       }
     }
@@ -257,6 +263,17 @@ export class AsyncGameEngine {
       interceptionChance *= Math.max(0.2, 1 - (totalEscortStrength - totalRaiderStrength) * 0.05);
     }
 
+    // Front efficiency: destination zone's raid resistance reduces interception
+    const destZone = await this.db.getZone(toZoneId);
+    if (destZone && destZone.ownerId) {
+      const efficiency = getZoneEfficiency(
+        destZone.supplyLevel, destZone.complianceStreak,
+        destZone.medkitStockpile, destZone.commsStockpile
+      );
+      // raidResistance > 1.0 reduces chance, < 1.0 increases it
+      interceptionChance /= Math.max(0.1, efficiency.raidResistance);
+    }
+
     interceptionChance = Math.min(0.95, interceptionChance);
 
     return Math.random() < interceptionChance;
@@ -294,11 +311,25 @@ export class AsyncGameEngine {
     const totalEscortStrength = escorts.reduce((sum, u) => sum + u.strength, 0);
     const totalRaiderStrength = raiders.reduce((sum, u) => sum + u.strength, 0);
 
+    // Medkit bonus: zone's medkit stockpile reduces effective raider strength
+    const destZone = await this.db.getZone(toZoneId);
+    let medkitBonus = 0;
+    if (destZone) {
+      const efficiency = getZoneEfficiency(
+        destZone.supplyLevel, destZone.complianceStreak,
+        destZone.medkitStockpile, destZone.commsStockpile
+      );
+      medkitBonus = efficiency.medkitBonus;
+    }
+
+    // Effective escort strength boosted by medkit bonus (up to +50%)
+    const effectiveEscortStrength = totalEscortStrength * (1 + medkitBonus);
+
     let cargoLossPct = 0.5;
     const combatEvents: any[] = [];
 
-    if (totalRaiderStrength > 0 && totalEscortStrength > 0) {
-      const escortAdvantage = totalEscortStrength - totalRaiderStrength;
+    if (totalRaiderStrength > 0 && effectiveEscortStrength > 0) {
+      const escortAdvantage = effectiveEscortStrength - totalRaiderStrength;
 
       if (escortAdvantage > 10) {
         cargoLossPct = 0.1;
@@ -464,6 +495,28 @@ export class AsyncGameEngine {
         const newInventory = { ...zone.inventory };
         (newInventory as any)[resource] = newAmount;
         await this.db.updateZone(zone.id, { inventory: newInventory });
+      }
+    }
+  }
+
+  private async processStockpileDecay(tick: number): Promise<void> {
+    const zones = await this.db.getAllZones();
+
+    for (const zone of zones) {
+      const updates: Partial<Zone> = {};
+
+      // Medkits decay 1 per 10 ticks
+      if (zone.medkitStockpile > 0) {
+        updates.medkitStockpile = Math.max(0, zone.medkitStockpile - 1);
+      }
+
+      // Comms decay 1 per 20 ticks (called every 10, so decay every other call)
+      if (zone.commsStockpile > 0 && tick % 20 === 0) {
+        updates.commsStockpile = Math.max(0, zone.commsStockpile - 1);
+      }
+
+      if (Object.keys(updates).length > 0) {
+        await this.db.updateZone(zone.id, updates);
       }
     }
   }
@@ -747,6 +800,70 @@ export class AsyncGameEngine {
     return { success: true };
   }
 
+  async depositStockpile(
+    playerId: string,
+    zoneId: string,
+    resource: 'medkits' | 'comms',
+    amount: number
+  ): Promise<{ success: boolean; error?: string }> {
+    const canAct = await this.canPlayerAct(playerId);
+    if (!canAct.allowed) return { success: false, error: canAct.reason };
+
+    const player = await this.db.getPlayer(playerId);
+    if (!player) return { success: false, error: 'Player not found' };
+
+    const zone = await this.db.getZone(zoneId);
+    if (!zone) return { success: false, error: 'Zone not found' };
+
+    if (player.locationId !== zoneId) {
+      return { success: false, error: 'Must be at zone' };
+    }
+
+    if (!zone.ownerId) {
+      return { success: false, error: 'Zone must be controlled by a faction' };
+    }
+
+    if ((player.inventory as any)[resource] < amount) {
+      return { success: false, error: `Insufficient ${resource}. Have ${(player.inventory as any)[resource]}, need ${amount}` };
+    }
+
+    const newInventory = { ...player.inventory };
+    (newInventory as any)[resource] -= amount;
+    await this.db.updatePlayer(playerId, { inventory: newInventory });
+
+    const fieldName = resource === 'medkits' ? 'medkitStockpile' : 'commsStockpile';
+    const currentStockpile = resource === 'medkits' ? zone.medkitStockpile : zone.commsStockpile;
+    await this.db.updateZone(zoneId, { [fieldName]: currentStockpile + amount });
+
+    await this.recordPlayerAction(playerId);
+
+    await this.recordEvent('stockpile_deposited', playerId, 'player', {
+      zoneId,
+      zoneName: zone.name,
+      resource,
+      amount,
+      newStockpile: currentStockpile + amount
+    });
+
+    return { success: true };
+  }
+
+  async getZoneEfficiency(zoneId: string): Promise<{
+    success: boolean;
+    efficiency?: ReturnType<typeof getZoneEfficiency>;
+    error?: string;
+  }> {
+    const zone = await this.db.getZone(zoneId);
+    if (!zone) return { success: false, error: 'Zone not found' };
+
+    const efficiency = getZoneEfficiency(
+      zone.supplyLevel, zone.complianceStreak,
+      zone.medkitStockpile, zone.commsStockpile
+    );
+
+    return { success: true, efficiency };
+  }
+
   async scan(playerId: string, targetType: 'zone' | 'route', targetId: string): Promise<{ success: boolean; intel?: any; error?: string }> {
     const canAct = await this.canPlayerAct(playerId);
     if (!canAct.allowed) return { success: false, error: canAct.reason };
@@ -774,12 +891,15 @@ export class AsyncGameEngine {
         type: zone.type,
         owner: zone.ownerId,
         ownerName,
-        supplyState: getSupplyState(zone.supplyLevel),
+        supplyState: getSupplyState(zone.supplyLevel, zone.complianceStreak),
         supplyLevel: zone.supplyLevel,
         suStockpile: zone.suStockpile,
         burnRate: zone.burnRate,
         marketActivity: orders.length,
-        garrisonLevel: zone.garrisonLevel
+        garrisonLevel: zone.garrisonLevel,
+        medkitStockpile: zone.medkitStockpile,
+        commsStockpile: zone.commsStockpile,
+        complianceStreak: zone.complianceStreak
       };
     } else {
       const route = await this.db.getRoute(targetId);
@@ -804,6 +924,20 @@ export class AsyncGameEngine {
       };
     }
 
+    // Comms defense: target zone's comms stockpile degrades scan quality
+    let signalQuality = 100;
+    if (targetType === 'zone') {
+      const targetZone = await this.db.getZone(targetId);
+      if (targetZone && targetZone.ownerId && targetZone.ownerId !== player.factionId) {
+        const efficiency = getZoneEfficiency(
+          targetZone.supplyLevel, targetZone.complianceStreak,
+          targetZone.medkitStockpile, targetZone.commsStockpile
+        );
+        // commsDefense 0-0.5 reduces signal quality proportionally
+        signalQuality = Math.round(100 * (1 - efficiency.commsDefense));
+      }
+    }
+
     await this.db.createIntel({
       playerId,
       factionId: player.factionId,
@@ -811,7 +945,7 @@ export class AsyncGameEngine {
       targetId,
       gatheredAt: tick,
       data,
-      signalQuality: 100
+      signalQuality
     });
 
     await this.recordPlayerAction(playerId);
@@ -819,7 +953,7 @@ export class AsyncGameEngine {
     await this.recordEvent('intel_gathered', playerId, 'player', {
       targetType,
       targetId,
-      signalQuality: 100,
+      signalQuality,
       sharedWithFaction: !!player.factionId
     });
 
@@ -861,13 +995,21 @@ export class AsyncGameEngine {
       (newInventory as any)[resource] -= (needed || 0) * quantity;
     }
 
+    // Production bonus from zone efficiency (fortified/high-streak zones produce more)
+    const efficiency = getZoneEfficiency(
+      zone.supplyLevel, zone.complianceStreak,
+      zone.medkitStockpile, zone.commsStockpile
+    );
+    const bonusQuantity = Math.floor(quantity * efficiency.productionBonus);
+    const totalOutput = quantity + bonusQuantity;
+
     if (recipe.isUnit) {
       await this.db.updatePlayer(playerId, { inventory: newInventory });
 
       const units: Unit[] = [];
       const unitType = output as 'escort' | 'raider';
 
-      for (let i = 0; i < quantity; i++) {
+      for (let i = 0; i < totalOutput; i++) {
         const unit = await this.db.createUnit({
           playerId,
           type: unitType,
@@ -886,14 +1028,15 @@ export class AsyncGameEngine {
       await this.recordEvent('player_action', playerId, 'player', {
         action: 'produce_unit',
         unitType,
-        quantity,
+        quantity: totalOutput,
+        bonusFromEfficiency: bonusQuantity,
         zone: zone.name
       });
 
-      return { success: true, produced: quantity, units };
+      return { success: true, produced: totalOutput, units };
     }
 
-    (newInventory as any)[output] += quantity;
+    (newInventory as any)[output] += totalOutput;
     await this.db.updatePlayer(playerId, { inventory: newInventory });
 
     await this.recordPlayerAction(playerId);
@@ -901,11 +1044,12 @@ export class AsyncGameEngine {
     await this.recordEvent('player_action', playerId, 'player', {
       action: 'produce',
       output,
-      quantity,
+      quantity: totalOutput,
+      bonusFromEfficiency: bonusQuantity,
       zone: zone.name
     });
 
-    return { success: true, produced: quantity };
+    return { success: true, produced: totalOutput };
   }
 
   async extract(
@@ -982,7 +1126,15 @@ export class AsyncGameEngine {
       if (zone.ownerId === player.factionId) {
         return { success: false, error: 'Zone already controlled by your faction' };
       }
-      if (zone.supplyLevel > 0) {
+
+      // Front efficiency: capture defense check
+      const efficiency = getZoneEfficiency(
+        zone.supplyLevel, zone.complianceStreak,
+        zone.medkitStockpile, zone.commsStockpile
+      );
+
+      // Fortified/supplied zones require supply collapse
+      if (efficiency.captureDefense > 0 && zone.supplyLevel > 0) {
         return { success: false, error: 'Zone is defended. Supply must collapse before capture.' };
       }
     }
@@ -990,7 +1142,9 @@ export class AsyncGameEngine {
     await this.db.updateZone(zoneId, {
       ownerId: player.factionId,
       supplyLevel: 0,
-      complianceStreak: 0
+      complianceStreak: 0,
+      medkitStockpile: 0,
+      commsStockpile: 0
     });
 
     await this.recordPlayerAction(playerId);

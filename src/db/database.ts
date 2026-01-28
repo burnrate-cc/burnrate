@@ -287,7 +287,9 @@ export class GameDatabase {
       inventory: JSON.parse(row.inventory),
       productionCapacity: row.production_capacity,
       garrisonLevel: row.garrison_level,
-      marketDepth: row.market_depth
+      marketDepth: row.market_depth,
+      medkitStockpile: row.medkit_stockpile || 0,
+      commsStockpile: row.comms_stockpile || 0
     };
   }
 

@@ -43,7 +43,9 @@ export function generateWorldData(config: WorldGenConfig = DEFAULT_CONFIG): { zo
       inventory: { ...emptyInventory(), credits: 10000 },
       productionCapacity: 0,
       garrisonLevel: 10,
-      marketDepth: 2.0
+      marketDepth: 2.0,
+      medkitStockpile: 0,
+      commsStockpile: 0
     });
   }
 
@@ -66,7 +68,9 @@ export function generateWorldData(config: WorldGenConfig = DEFAULT_CONFIG): { zo
       inventory: emptyInventory(),
       productionCapacity: 100,
       garrisonLevel: 2,
-      marketDepth: 1.0
+      marketDepth: 1.0,
+      medkitStockpile: 0,
+      commsStockpile: 0
     });
   }
 
@@ -94,7 +98,9 @@ export function generateWorldData(config: WorldGenConfig = DEFAULT_CONFIG): { zo
       inventory,
       productionCapacity: 50,
       garrisonLevel: 0,
-      marketDepth: 0.5
+      marketDepth: 0.5,
+      medkitStockpile: 0,
+      commsStockpile: 0
     });
   }
 
@@ -113,7 +119,9 @@ export function generateWorldData(config: WorldGenConfig = DEFAULT_CONFIG): { zo
       inventory: emptyInventory(),
       productionCapacity: 0,
       garrisonLevel: 0,
-      marketDepth: 0.5
+      marketDepth: 0.5,
+      medkitStockpile: 0,
+      commsStockpile: 0
     });
   }
 
@@ -132,7 +140,9 @@ export function generateWorldData(config: WorldGenConfig = DEFAULT_CONFIG): { zo
       inventory: emptyInventory(),
       productionCapacity: 0,
       garrisonLevel: 5,
-      marketDepth: 0.2
+      marketDepth: 0.2,
+      medkitStockpile: 0,
+      commsStockpile: 0
     });
   }
 
@@ -151,7 +161,9 @@ export function generateWorldData(config: WorldGenConfig = DEFAULT_CONFIG): { zo
       inventory: emptyInventory(),
       productionCapacity: 0,
       garrisonLevel: 10,
-      marketDepth: 0.1
+      marketDepth: 0.1,
+      medkitStockpile: 0,
+      commsStockpile: 0
     });
   }
 
