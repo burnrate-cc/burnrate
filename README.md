@@ -19,7 +19,7 @@ What if using Claude well *was* the actual game?
 
 BURNRATE is designed for automation. The MCP tools are your interface, but the real game is building Claude agents that optimize extraction, find efficient routes, spot market arbitrage, and coordinate faction logistics.
 
-The players who learn to work WITH Claude—analyzing intel, drafting doctrine, building automation—win. Skills transfer directly to real work.
+The players who learn to work WITH Claude—analyzing intel, optimizing routes, building automation—win. Skills transfer directly to real work.
 
 **Play between tasks.** Check supply lines between deploys. Run convoys during CI builds. Strategy in the margins.
 
@@ -103,6 +103,13 @@ Use burnrate_routes to see where I can travel
 
 ### The Burn
 Every controlled zone consumes **Supply Units (SU)** each tick. If supply runs out, the zone collapses and becomes neutral. Winners are the factions that keep their zones fed while starving enemies.
+
+### Credits
+Credits are the in-game currency. You start with 1000 and earn more through contracts and trading. Spend them on:
+- Extraction (5 credits per raw resource unit)
+- Licenses (500-2000 credits)
+- Hiring units from other players
+- Posting contract rewards
 
 ### Resources
 ```
@@ -331,11 +338,31 @@ These prompts do basic data gathering and ask Claude for analysis. They're meant
 
 ### Subscription Tiers
 
-| Tier | Actions/Day | Market Orders | Contracts | Event History |
-|------|-------------|---------------|-----------|---------------|
-| Freelance | 200 | 5 | 3 | 200 |
-| Operator | 500 | 20 | 10 | 10,000 |
-| Command | 1000 | 50 | 25 | 100,000 |
+All players get the same core gameplay. Paid tiers unlock collaboration, analytics, and discovery.
+
+| Feature | Freelance | Operator | Command |
+|---------|-----------|----------|---------|
+| **Gameplay** |
+| Actions/day | 200 | 250 | 300 |
+| Market orders | 5 | 10 | 20 |
+| Active contracts | 3 | 10 | 25 |
+| **Analytics** |
+| Event history | 200 | 10,000 | 100,000 |
+| Market analytics | - | Basic | Advanced |
+| **Factions** |
+| Join factions | ✓ | ✓ | ✓ |
+| Create factions | ✓ | ✓ | ✓ |
+| Faction analytics | - | ✓ | ✓ |
+| Audit logs | - | - | ✓ |
+| **Templates** |
+| Browse community templates | ✓ | ✓ | ✓ |
+| One-click import | - | ✓ | ✓ |
+| Publish templates | - | ✓ | ✓ |
+| Featured placement | - | - | ✓ |
+| **Market** |
+| Basic orders | ✓ | ✓ | ✓ |
+| Conditional orders | - | ✓ | ✓ |
+| Time-weighted orders | - | - | ✓ |
 
 ## Self-Hosting (Optional)
 
