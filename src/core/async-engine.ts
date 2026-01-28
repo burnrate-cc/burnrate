@@ -10,7 +10,8 @@ import {
   Inventory, Resource, emptyInventory, TIER_LIMITS,
   RECIPES, getFieldResource, IntelReportWithFreshness, ContractType,
   FactionRank, FACTION_PERMISSIONS, Faction, ShipmentType, LICENSE_REQUIREMENTS,
-  REPUTATION_REWARDS, getReputationTitle, SEASON_CONFIG, SeasonScore
+  REPUTATION_REWARDS, getReputationTitle, SEASON_CONFIG, SeasonScore,
+  TUTORIAL_CONTRACTS
 } from './types.js';
 
 export class AsyncGameEngine {
@@ -48,6 +49,10 @@ export class AsyncGameEngine {
     if (tick % 144 === 0) {
       await this.resetDailyActions();
     }
+
+    // Process advanced market orders
+    const advancedOrderEvents = await this.processAdvancedOrders(tick);
+    events.push(...advancedOrderEvents);
 
     // Clean up expired intel every 50 ticks to keep database size manageable
     if (tick % 50 === 0) {
@@ -2306,5 +2311,594 @@ export class AsyncGameEngine {
       actorType,
       data
     });
+  }
+
+  // ============================================================================
+  // PHASE 2: ONBOARDING
+  // ============================================================================
+
+  async getTutorialStatus(playerId: string): Promise<{
+    success: boolean;
+    step?: number;
+    total?: number;
+    currentContract?: typeof TUTORIAL_CONTRACTS[number] | null;
+    error?: string;
+  }> {
+    const player = await this.db.getPlayer(playerId);
+    if (!player) return { success: false, error: 'Player not found' };
+
+    return {
+      success: true,
+      step: player.tutorialStep,
+      total: 5,
+      currentContract: player.tutorialStep < 5 ? TUTORIAL_CONTRACTS[player.tutorialStep] : null
+    };
+  }
+
+  async completeTutorialStep(playerId: string, step: number): Promise<{
+    success: boolean;
+    step?: number;
+    reward?: { credits: number; reputation: number };
+    error?: string;
+  }> {
+    const player = await this.db.getPlayer(playerId);
+    if (!player) return { success: false, error: 'Player not found' };
+
+    if (step !== player.tutorialStep + 1) {
+      return { success: false, error: `Must complete step ${player.tutorialStep + 1} next` };
+    }
+
+    if (step < 1 || step > 5) {
+      return { success: false, error: 'Invalid tutorial step' };
+    }
+
+    const contract = TUTORIAL_CONTRACTS[step - 1];
+    const reward = contract.reward;
+
+    // Award credits and reputation
+    const newInventory = { ...player.inventory };
+    newInventory.credits += reward.credits;
+    await this.db.updatePlayer(playerId, {
+      inventory: newInventory,
+      tutorialStep: step,
+      reputation: player.reputation + reward.reputation
+    });
+
+    await this.recordEvent('tutorial_completed', playerId, 'player', {
+      step,
+      reward
+    });
+
+    return { success: true, step, reward };
+  }
+
+  async ensureStarterFaction(): Promise<void> {
+    const factions = await this.db.getAllFactions();
+    const exists = factions.some(f => f.tag === 'FREE');
+    if (!exists) {
+      await this.db.createFaction('Freelancers', 'FREE', 'system');
+    }
+  }
+
+  // ============================================================================
+  // PHASE 5: DOCTRINES
+  // ============================================================================
+
+  async createDoctrine(playerId: string, title: string, content: string): Promise<{
+    success: boolean;
+    doctrine?: any;
+    error?: string;
+  }> {
+    const player = await this.db.getPlayer(playerId);
+    if (!player) return { success: false, error: 'Player not found' };
+
+    if (!player.factionId) {
+      return { success: false, error: 'Not in a faction' };
+    }
+
+    const rank = await this.db.getFactionMemberRank(player.factionId, playerId);
+    if (!rank || (rank !== 'officer' && rank !== 'founder')) {
+      return { success: false, error: 'Must be officer or founder to create doctrines' };
+    }
+
+    const doctrine = await this.db.createDoctrine(player.factionId, title, content, playerId);
+
+    await this.db.createAuditLog(player.factionId, playerId, 'create_doctrine', {
+      doctrineId: doctrine.id,
+      title
+    });
+
+    return { success: true, doctrine };
+  }
+
+  async getFactionDoctrines(playerId: string): Promise<{
+    success: boolean;
+    doctrines?: any[];
+    error?: string;
+  }> {
+    const player = await this.db.getPlayer(playerId);
+    if (!player) return { success: false, error: 'Player not found' };
+
+    if (!player.factionId) {
+      return { success: false, error: 'Not in a faction' };
+    }
+
+    const doctrines = await this.db.getFactionDoctrines(player.factionId);
+    return { success: true, doctrines };
+  }
+
+  async updateDoctrine(playerId: string, doctrineId: string, content: string): Promise<{
+    success: boolean;
+    error?: string;
+  }> {
+    const player = await this.db.getPlayer(playerId);
+    if (!player) return { success: false, error: 'Player not found' };
+
+    if (!player.factionId) {
+      return { success: false, error: 'Not in a faction' };
+    }
+
+    const rank = await this.db.getFactionMemberRank(player.factionId, playerId);
+    if (!rank || (rank !== 'officer' && rank !== 'founder')) {
+      return { success: false, error: 'Must be officer or founder to update doctrines' };
+    }
+
+    await this.db.updateDoctrine(doctrineId, content);
+
+    await this.db.createAuditLog(player.factionId, playerId, 'update_doctrine', {
+      doctrineId
+    });
+
+    return { success: true };
+  }
+
+  async deleteDoctrine(playerId: string, doctrineId: string): Promise<{
+    success: boolean;
+    error?: string;
+  }> {
+    const player = await this.db.getPlayer(playerId);
+    if (!player) return { success: false, error: 'Player not found' };
+
+    if (!player.factionId) {
+      return { success: false, error: 'Not in a faction' };
+    }
+
+    const rank = await this.db.getFactionMemberRank(player.factionId, playerId);
+    if (!rank || (rank !== 'officer' && rank !== 'founder')) {
+      return { success: false, error: 'Must be officer or founder to delete doctrines' };
+    }
+
+    await this.db.deleteDoctrine(doctrineId);
+
+    await this.db.createAuditLog(player.factionId, playerId, 'delete_doctrine', {
+      doctrineId
+    });
+
+    return { success: true };
+  }
+
+  // ============================================================================
+  // PHASE 5: ADVANCED MARKET ORDERS
+  // ============================================================================
+
+  async createConditionalOrder(
+    playerId: string,
+    zoneId: string,
+    resource: string,
+    side: string,
+    triggerPrice: number,
+    quantity: number,
+    condition: string
+  ): Promise<{ success: boolean; order?: any; error?: string }> {
+    const player = await this.db.getPlayer(playerId);
+    if (!player) return { success: false, error: 'Player not found' };
+
+    if (player.tier !== 'operator' && player.tier !== 'command') {
+      return { success: false, error: 'Conditional orders require Operator or Command tier' };
+    }
+
+    if (player.locationId !== zoneId) {
+      return { success: false, error: 'Must be at the zone' };
+    }
+
+    const tick = await this.db.getCurrentTick();
+    const order = await this.db.createConditionalOrder({
+      playerId,
+      zoneId,
+      resource: resource as Resource,
+      side: side as 'buy' | 'sell',
+      triggerPrice,
+      quantity,
+      condition: condition as 'price_below' | 'price_above',
+      status: 'active',
+      createdAt: tick
+    });
+
+    return { success: true, order };
+  }
+
+  async createTimeWeightedOrder(
+    playerId: string,
+    zoneId: string,
+    resource: string,
+    side: string,
+    price: number,
+    totalQuantity: number,
+    quantityPerTick: number
+  ): Promise<{ success: boolean; order?: any; error?: string }> {
+    const player = await this.db.getPlayer(playerId);
+    if (!player) return { success: false, error: 'Player not found' };
+
+    if (player.tier !== 'command') {
+      return { success: false, error: 'Time-weighted orders require Command tier' };
+    }
+
+    if (player.locationId !== zoneId) {
+      return { success: false, error: 'Must be at the zone' };
+    }
+
+    const tick = await this.db.getCurrentTick();
+    const order = await this.db.createTimeWeightedOrder({
+      playerId,
+      zoneId,
+      resource: resource as Resource,
+      side: side as 'buy' | 'sell',
+      price,
+      totalQuantity,
+      remainingQuantity: totalQuantity,
+      quantityPerTick,
+      status: 'active',
+      createdAt: tick
+    });
+
+    return { success: true, order };
+  }
+
+  async processConditionalOrders(tick: number): Promise<void> {
+    const orders = await this.db.getActiveConditionalOrders();
+
+    for (const order of orders) {
+      const marketOrders = await this.db.getOrdersForZone(order.zoneId, order.resource);
+
+      let bestPrice: number | null = null;
+      if (order.side === 'buy') {
+        // Looking at sell orders for best ask price
+        const sells = marketOrders.filter(o => o.side === 'sell' && o.quantity > 0);
+        if (sells.length > 0) {
+          bestPrice = Math.min(...sells.map(o => o.price));
+        }
+      } else {
+        // Looking at buy orders for best bid price
+        const buys = marketOrders.filter(o => o.side === 'buy' && o.quantity > 0);
+        if (buys.length > 0) {
+          bestPrice = Math.max(...buys.map(o => o.price));
+        }
+      }
+
+      if (bestPrice === null) continue;
+
+      let conditionMet = false;
+      if (order.condition === 'price_below' && bestPrice <= order.triggerPrice) {
+        conditionMet = true;
+      } else if (order.condition === 'price_above' && bestPrice >= order.triggerPrice) {
+        conditionMet = true;
+      }
+
+      if (conditionMet) {
+        await this.db.createOrder({
+          playerId: order.playerId,
+          zoneId: order.zoneId,
+          resource: order.resource,
+          side: order.side,
+          price: order.triggerPrice,
+          quantity: order.quantity,
+          originalQuantity: order.quantity,
+          createdAt: tick
+        });
+
+        await this.db.updateConditionalOrderStatus(order.id, 'triggered');
+      }
+    }
+  }
+
+  async processTimeWeightedOrders(tick: number): Promise<void> {
+    const orders = await this.db.getActiveTimeWeightedOrders();
+
+    for (const order of orders) {
+      const qty = Math.min(order.quantityPerTick, order.remainingQuantity);
+      if (qty <= 0) continue;
+
+      await this.db.createOrder({
+        playerId: order.playerId,
+        zoneId: order.zoneId,
+        resource: order.resource,
+        side: order.side,
+        price: order.price,
+        quantity: qty,
+        originalQuantity: qty,
+        createdAt: tick
+      });
+
+      const newRemaining = order.remainingQuantity - qty;
+      await this.db.updateTimeWeightedOrder(order.id, newRemaining);
+
+      if (newRemaining <= 0) {
+        await this.db.updateTimeWeightedOrder(order.id, 0);
+      }
+    }
+  }
+
+  private async processAdvancedOrders(tick: number): Promise<GameEvent[]> {
+    const events: GameEvent[] = [];
+    await this.processConditionalOrders(tick);
+    await this.processTimeWeightedOrders(tick);
+    return events;
+  }
+
+  // ============================================================================
+  // PHASE 6: WEBHOOKS
+  // ============================================================================
+
+  async registerWebhook(playerId: string, url: string, events: string[]): Promise<{
+    success: boolean;
+    webhook?: any;
+    error?: string;
+  }> {
+    const player = await this.db.getPlayer(playerId);
+    if (!player) return { success: false, error: 'Player not found' };
+
+    if (player.tier !== 'operator' && player.tier !== 'command') {
+      return { success: false, error: 'Webhooks require Operator or Command tier' };
+    }
+
+    if (!url.startsWith('https://')) {
+      return { success: false, error: 'Webhook URL must start with https://' };
+    }
+
+    const existing = await this.db.getPlayerWebhooks(playerId);
+    if (existing.length >= 5) {
+      return { success: false, error: 'Maximum 5 webhooks per player' };
+    }
+
+    const webhook = await this.db.createWebhook(playerId, url, events);
+    return { success: true, webhook };
+  }
+
+  async getWebhooks(playerId: string): Promise<{
+    success: boolean;
+    webhooks?: any[];
+    error?: string;
+  }> {
+    const player = await this.db.getPlayer(playerId);
+    if (!player) return { success: false, error: 'Player not found' };
+
+    const webhooks = await this.db.getPlayerWebhooks(playerId);
+    return { success: true, webhooks };
+  }
+
+  async deleteWebhook(playerId: string, webhookId: string): Promise<{
+    success: boolean;
+    error?: string;
+  }> {
+    const player = await this.db.getPlayer(playerId);
+    if (!player) return { success: false, error: 'Player not found' };
+
+    await this.db.deleteWebhook(webhookId, playerId);
+    return { success: true };
+  }
+
+  async triggerWebhooks(eventType: string, data: any): Promise<void> {
+    const webhooks = await this.db.getWebhooksForEvent(eventType);
+
+    for (const webhook of webhooks) {
+      if (!webhook.active) continue;
+
+      try {
+        const response = await fetch(webhook.url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ event: eventType, data, timestamp: new Date().toISOString() })
+        });
+
+        if (response.ok) {
+          const tick = await this.db.getCurrentTick();
+          await this.db.updateWebhookStatus(webhook.id, tick, 0);
+        } else {
+          const newFailCount = webhook.failCount + 1;
+          const tick = await this.db.getCurrentTick();
+          await this.db.updateWebhookStatus(webhook.id, tick, newFailCount);
+          if (newFailCount >= 5) {
+            await this.db.updateWebhookStatus(webhook.id, tick, newFailCount);
+          }
+        }
+      } catch {
+        const newFailCount = webhook.failCount + 1;
+        const tick = await this.db.getCurrentTick();
+        await this.db.updateWebhookStatus(webhook.id, tick, newFailCount);
+      }
+    }
+  }
+
+  // ============================================================================
+  // PHASE 6: DATA EXPORT
+  // ============================================================================
+
+  async exportPlayerData(playerId: string): Promise<{
+    success: boolean;
+    data?: {
+      player: Player;
+      units: Unit[];
+      shipments: Shipment[];
+      contracts: Contract[];
+      intel: IntelReportWithFreshness[];
+      events: GameEvent[];
+    };
+    error?: string;
+  }> {
+    const player = await this.db.getPlayer(playerId);
+    if (!player) return { success: false, error: 'Player not found' };
+
+    const units = await this.db.getPlayerUnits(playerId);
+    const shipments = await this.db.getPlayerShipments(playerId);
+    const contracts = await this.db.getPlayerContracts(playerId);
+    const intel = await this.db.getPlayerIntelWithFreshness(playerId);
+    const events = await this.db.getEvents({ actorId: playerId });
+
+    return {
+      success: true,
+      data: { player, units, shipments, contracts, intel, events }
+    };
+  }
+
+  // ============================================================================
+  // PHASE 6: BATCH OPERATIONS
+  // ============================================================================
+
+  async executeBatch(playerId: string, operations: Array<{ action: string; params: any }>): Promise<{
+    success: boolean;
+    results?: Array<{ action: string; result: any }>;
+    error?: string;
+  }> {
+    if (operations.length > 10) {
+      return { success: false, error: 'Maximum 10 operations per batch' };
+    }
+
+    const player = await this.db.getPlayer(playerId);
+    if (!player) return { success: false, error: 'Player not found' };
+
+    const results: Array<{ action: string; result: any }> = [];
+
+    for (const op of operations) {
+      const canAct = await this.canPlayerAct(playerId);
+      if (!canAct.allowed) {
+        results.push({ action: op.action, result: { success: false, error: canAct.reason } });
+        continue;
+      }
+
+      let result: any;
+      try {
+        switch (op.action) {
+          case 'travel':
+            result = await this.travel(playerId, op.params.toZoneId);
+            break;
+          case 'extract':
+            result = await this.extract(playerId, op.params.quantity);
+            break;
+          case 'produce':
+            result = await this.produce(playerId, op.params.output, op.params.quantity);
+            break;
+          case 'placeOrder':
+            result = await this.placeOrder(playerId, op.params.zoneId, op.params.resource, op.params.side, op.params.price, op.params.quantity);
+            break;
+          case 'depositSU':
+            result = await this.depositSU(playerId, op.params.zoneId, op.params.amount);
+            break;
+          case 'scan':
+            result = await this.scan(playerId, op.params.targetType, op.params.targetId);
+            break;
+          default:
+            result = { success: false, error: `Unknown action: ${op.action}` };
+        }
+      } catch (err: any) {
+        result = { success: false, error: err.message || 'Action failed' };
+      }
+
+      results.push({ action: op.action, result });
+    }
+
+    return { success: true, results };
+  }
+
+  // ============================================================================
+  // PHASE 7: FACTION ANALYTICS
+  // ============================================================================
+
+  async getFactionAnalytics(playerId: string): Promise<{
+    success: boolean;
+    analytics?: {
+      members: any[];
+      zones: any[];
+      activity: any[];
+    };
+    error?: string;
+  }> {
+    const player = await this.db.getPlayer(playerId);
+    if (!player) return { success: false, error: 'Player not found' };
+
+    if (player.tier !== 'operator' && player.tier !== 'command') {
+      return { success: false, error: 'Faction analytics require Operator or Command tier' };
+    }
+
+    if (!player.factionId) {
+      return { success: false, error: 'Not in a faction' };
+    }
+
+    const rank = await this.db.getFactionMemberRank(player.factionId, playerId);
+    if (!rank || (rank !== 'officer' && rank !== 'founder')) {
+      return { success: false, error: 'Must be officer or founder to view analytics' };
+    }
+
+    // Get members with activity data
+    const faction = await this.db.getFaction(player.factionId);
+    if (!faction) return { success: false, error: 'Faction not found' };
+
+    const allPlayers = await this.db.getAllPlayers();
+    const members = allPlayers
+      .filter(p => p.factionId === player.factionId)
+      .map(p => ({
+        id: p.id,
+        name: p.name,
+        tier: p.tier,
+        lastActionTick: p.lastActionTick,
+        reputation: p.reputation,
+        locationId: p.locationId
+      }));
+
+    // Get zone control summary
+    const allZones = await this.db.getAllZones();
+    const zones = allZones
+      .filter(z => z.ownerId === player.factionId)
+      .map(z => ({
+        id: z.id,
+        name: z.name,
+        type: z.type,
+        supplyLevel: z.supplyLevel,
+        suStockpile: z.suStockpile,
+        burnRate: z.burnRate
+      }));
+
+    // Get resource flow from audit logs
+    const auditLogs = await this.db.getFactionAuditLogs(player.factionId, 100);
+    const activity = auditLogs.map(log => ({
+      action: log.action,
+      playerId: log.playerId,
+      details: log.details,
+      tick: log.tick
+    }));
+
+    return {
+      success: true,
+      analytics: { members, zones, activity }
+    };
+  }
+
+  async getFactionAuditLogs(playerId: string, limit?: number): Promise<{
+    success: boolean;
+    logs?: any[];
+    error?: string;
+  }> {
+    const player = await this.db.getPlayer(playerId);
+    if (!player) return { success: false, error: 'Player not found' };
+
+    if (player.tier !== 'command') {
+      return { success: false, error: 'Audit logs require Command tier' };
+    }
+
+    if (!player.factionId) {
+      return { success: false, error: 'Not in a faction' };
+    }
+
+    const logs = await this.db.getFactionAuditLogs(player.factionId, limit || 100);
+    return { success: true, logs };
   }
 }

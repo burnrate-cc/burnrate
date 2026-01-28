@@ -10,7 +10,8 @@ import {
   MarketOrder, Contract, IntelReport, GameEvent, Inventory,
   emptyInventory, ZoneType, SubscriptionTier, FactionRank,
   IntelReportWithFreshness, getIntelFreshness, getDecayedSignalQuality, applyIntelDecay,
-  SeasonScore, calculateSeasonScore
+  SeasonScore, calculateSeasonScore, Resource,
+  Doctrine, Webhook, WebhookEventType, ConditionalOrder, TimeWeightedOrder, AuditLogEntry
 } from '../core/types.js';
 
 export class TursoDatabase {
@@ -115,6 +116,7 @@ export class TursoDatabase {
         actions_today INTEGER NOT NULL DEFAULT 0,
         last_action_tick INTEGER NOT NULL DEFAULT 0,
         licenses TEXT NOT NULL DEFAULT '{"courier":true,"freight":false,"convoy":false}',
+        tutorial_step INTEGER NOT NULL DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (location_id) REFERENCES zones(id),
         FOREIGN KEY (faction_id) REFERENCES factions(id)
@@ -261,6 +263,79 @@ export class TursoDatabase {
         UNIQUE(season_number, entity_id)
       )`,
 
+      // Doctrines (Phase 5)
+      `CREATE TABLE IF NOT EXISTS doctrines (
+        id TEXT PRIMARY KEY,
+        faction_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        content TEXT NOT NULL,
+        version INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        created_by TEXT NOT NULL,
+        FOREIGN KEY (faction_id) REFERENCES factions(id),
+        FOREIGN KEY (created_by) REFERENCES players(id)
+      )`,
+
+      // Webhooks (Phase 6)
+      `CREATE TABLE IF NOT EXISTS webhooks (
+        id TEXT PRIMARY KEY,
+        player_id TEXT NOT NULL,
+        url TEXT NOT NULL,
+        events TEXT NOT NULL DEFAULT '[]',
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        last_triggered_at INTEGER,
+        fail_count INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (player_id) REFERENCES players(id)
+      )`,
+
+      // Conditional orders (Phase 5)
+      `CREATE TABLE IF NOT EXISTS conditional_orders (
+        id TEXT PRIMARY KEY,
+        player_id TEXT NOT NULL,
+        zone_id TEXT NOT NULL,
+        resource TEXT NOT NULL,
+        side TEXT NOT NULL,
+        trigger_price INTEGER NOT NULL,
+        quantity INTEGER NOT NULL,
+        condition TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (player_id) REFERENCES players(id),
+        FOREIGN KEY (zone_id) REFERENCES zones(id)
+      )`,
+
+      // Time-weighted orders (Phase 5)
+      `CREATE TABLE IF NOT EXISTS time_weighted_orders (
+        id TEXT PRIMARY KEY,
+        player_id TEXT NOT NULL,
+        zone_id TEXT NOT NULL,
+        resource TEXT NOT NULL,
+        side TEXT NOT NULL,
+        price INTEGER NOT NULL,
+        total_quantity INTEGER NOT NULL,
+        remaining_quantity INTEGER NOT NULL,
+        quantity_per_tick INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (player_id) REFERENCES players(id),
+        FOREIGN KEY (zone_id) REFERENCES zones(id)
+      )`,
+
+      // Audit logs (Phase 7)
+      `CREATE TABLE IF NOT EXISTS audit_logs (
+        id TEXT PRIMARY KEY,
+        faction_id TEXT NOT NULL,
+        player_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        details TEXT NOT NULL DEFAULT '{}',
+        tick INTEGER NOT NULL,
+        timestamp TEXT NOT NULL,
+        FOREIGN KEY (faction_id) REFERENCES factions(id),
+        FOREIGN KEY (player_id) REFERENCES players(id)
+      )`,
+
       // Indexes
       `CREATE INDEX IF NOT EXISTS idx_events_tick ON events(tick)`,
       `CREATE INDEX IF NOT EXISTS idx_events_type ON events(type)`,
@@ -269,6 +344,12 @@ export class TursoDatabase {
       `CREATE INDEX IF NOT EXISTS idx_players_api_key ON players(api_key)`,
       `CREATE INDEX IF NOT EXISTS idx_season_scores_season ON season_scores(season_number)`,
       `CREATE INDEX IF NOT EXISTS idx_season_scores_total ON season_scores(total_score DESC)`,
+      `CREATE INDEX IF NOT EXISTS idx_doctrines_faction ON doctrines(faction_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_webhooks_player ON webhooks(player_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_conditional_orders_status ON conditional_orders(status)`,
+      `CREATE INDEX IF NOT EXISTS idx_time_weighted_orders_status ON time_weighted_orders(status)`,
+      `CREATE INDEX IF NOT EXISTS idx_audit_logs_faction ON audit_logs(faction_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_audit_logs_tick ON audit_logs(tick)`,
 
       // Initialize world state
       `INSERT OR IGNORE INTO world (id, current_tick, season_number, season_week) VALUES (1, 0, 1, 1)`,
@@ -450,6 +531,7 @@ export class TursoDatabase {
     return {
       id, name, tier: 'freelance', inventory, locationId: startingZoneId,
       factionId: null, reputation: 0, actionsToday: 0, lastActionTick: 0, licenses,
+      tutorialStep: 0,
       apiKey
     };
   }
@@ -498,6 +580,7 @@ export class TursoDatabase {
     if (updates.lastActionTick !== undefined) { sets.push('last_action_tick = ?'); values.push(updates.lastActionTick); }
     if (updates.tier !== undefined) { sets.push('tier = ?'); values.push(updates.tier); }
     if (updates.licenses !== undefined) { sets.push('licenses = ?'); values.push(JSON.stringify(updates.licenses)); }
+    if (updates.tutorialStep !== undefined) { sets.push('tutorial_step = ?'); values.push(updates.tutorialStep); }
 
     if (sets.length === 0) return;
     values.push(id);
@@ -518,7 +601,8 @@ export class TursoDatabase {
       reputation: row.reputation as number,
       actionsToday: row.actions_today as number,
       lastActionTick: row.last_action_tick as number,
-      licenses: JSON.parse(row.licenses as string)
+      licenses: JSON.parse(row.licenses as string),
+      tutorialStep: (row.tutorial_step as number) || 0
     };
   }
 
@@ -1284,6 +1368,242 @@ export class TursoDatabase {
    * Reset the game world for a new season.
    * Archives scores, resets zones/inventories, preserves accounts/licenses/factions.
    */
+  // ============================================================================
+  // DOCTRINES (Phase 5)
+  // ============================================================================
+
+  async createDoctrine(factionId: string, title: string, content: string, createdBy: string): Promise<Doctrine> {
+    const id = uuid();
+    const tick = await this.getCurrentTick();
+    await this.client.execute({
+      sql: `INSERT INTO doctrines (id, faction_id, title, content, version, created_at, updated_at, created_by)
+            VALUES (?, ?, ?, ?, 1, ?, ?, ?)`,
+      args: [id, factionId, title, content, tick, tick, createdBy]
+    });
+    return { id, factionId, title, content, version: 1, createdAt: tick, updatedAt: tick, createdBy };
+  }
+
+  async getFactionDoctrines(factionId: string): Promise<Doctrine[]> {
+    const result = await this.client.execute({
+      sql: 'SELECT * FROM doctrines WHERE faction_id = ? ORDER BY updated_at DESC',
+      args: [factionId]
+    });
+    return result.rows.map(row => ({
+      id: row.id as string,
+      factionId: row.faction_id as string,
+      title: row.title as string,
+      content: row.content as string,
+      version: row.version as number,
+      createdAt: row.created_at as number,
+      updatedAt: row.updated_at as number,
+      createdBy: row.created_by as string
+    }));
+  }
+
+  async getDoctrine(id: string): Promise<Doctrine | null> {
+    const result = await this.client.execute({
+      sql: 'SELECT * FROM doctrines WHERE id = ?',
+      args: [id]
+    });
+    if (result.rows.length === 0) return null;
+    const row = result.rows[0];
+    return {
+      id: row.id as string,
+      factionId: row.faction_id as string,
+      title: row.title as string,
+      content: row.content as string,
+      version: row.version as number,
+      createdAt: row.created_at as number,
+      updatedAt: row.updated_at as number,
+      createdBy: row.created_by as string
+    };
+  }
+
+  async updateDoctrine(id: string, content: string): Promise<void> {
+    const tick = await this.getCurrentTick();
+    await this.client.execute({
+      sql: 'UPDATE doctrines SET content = ?, version = version + 1, updated_at = ? WHERE id = ?',
+      args: [content, tick, id]
+    });
+  }
+
+  async deleteDoctrine(id: string): Promise<void> {
+    await this.client.execute({
+      sql: 'DELETE FROM doctrines WHERE id = ?',
+      args: [id]
+    });
+  }
+
+  // ============================================================================
+  // WEBHOOKS (Phase 6)
+  // ============================================================================
+
+  async createWebhook(playerId: string, url: string, events: string[]): Promise<Webhook> {
+    const id = uuid();
+    const tick = await this.getCurrentTick();
+    await this.client.execute({
+      sql: `INSERT INTO webhooks (id, player_id, url, events, active, created_at, fail_count)
+            VALUES (?, ?, ?, ?, 1, ?, 0)`,
+      args: [id, playerId, url, JSON.stringify(events), tick]
+    });
+    return { id, playerId, url, events: events as WebhookEventType[], active: true, createdAt: tick, lastTriggeredAt: null, failCount: 0 };
+  }
+
+  async getPlayerWebhooks(playerId: string): Promise<Webhook[]> {
+    const result = await this.client.execute({
+      sql: 'SELECT * FROM webhooks WHERE player_id = ?',
+      args: [playerId]
+    });
+    return result.rows.map(row => ({
+      id: row.id as string,
+      playerId: row.player_id as string,
+      url: row.url as string,
+      events: JSON.parse(row.events as string),
+      active: !!(row.active as number),
+      createdAt: row.created_at as number,
+      lastTriggeredAt: row.last_triggered_at as number | null,
+      failCount: row.fail_count as number
+    }));
+  }
+
+  async deleteWebhook(id: string, playerId: string): Promise<boolean> {
+    const result = await this.client.execute({
+      sql: 'DELETE FROM webhooks WHERE id = ? AND player_id = ?',
+      args: [id, playerId]
+    });
+    return result.rowsAffected > 0;
+  }
+
+  async getWebhooksForEvent(eventType: string): Promise<Webhook[]> {
+    const result = await this.client.execute({
+      sql: `SELECT * FROM webhooks WHERE active = 1 AND events LIKE ?`,
+      args: [`%${eventType}%`]
+    });
+    return result.rows.map(row => ({
+      id: row.id as string,
+      playerId: row.player_id as string,
+      url: row.url as string,
+      events: JSON.parse(row.events as string),
+      active: true,
+      createdAt: row.created_at as number,
+      lastTriggeredAt: row.last_triggered_at as number | null,
+      failCount: row.fail_count as number
+    }));
+  }
+
+  async updateWebhookStatus(id: string, lastTriggered: number, failCount: number): Promise<void> {
+    await this.client.execute({
+      sql: 'UPDATE webhooks SET last_triggered_at = ?, fail_count = ?, active = ? WHERE id = ?',
+      args: [lastTriggered, failCount, failCount < 5 ? 1 : 0, id]
+    });
+  }
+
+  // ============================================================================
+  // CONDITIONAL ORDERS (Phase 5)
+  // ============================================================================
+
+  async createConditionalOrder(order: Omit<ConditionalOrder, 'id'>): Promise<ConditionalOrder> {
+    const id = uuid();
+    await this.client.execute({
+      sql: `INSERT INTO conditional_orders (id, player_id, zone_id, resource, side, trigger_price, quantity, condition, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
+      args: [id, order.playerId, order.zoneId, order.resource, order.side, order.triggerPrice, order.quantity, order.condition, order.createdAt]
+    });
+    return { id, ...order, status: 'active' };
+  }
+
+  async getActiveConditionalOrders(): Promise<ConditionalOrder[]> {
+    const result = await this.client.execute("SELECT * FROM conditional_orders WHERE status = 'active'");
+    return result.rows.map(row => ({
+      id: row.id as string,
+      playerId: row.player_id as string,
+      zoneId: row.zone_id as string,
+      resource: row.resource as Resource,
+      side: row.side as 'buy' | 'sell',
+      triggerPrice: row.trigger_price as number,
+      quantity: row.quantity as number,
+      condition: row.condition as 'price_below' | 'price_above',
+      status: row.status as 'active' | 'triggered' | 'cancelled',
+      createdAt: row.created_at as number
+    }));
+  }
+
+  async updateConditionalOrderStatus(id: string, status: string): Promise<void> {
+    await this.client.execute({
+      sql: 'UPDATE conditional_orders SET status = ? WHERE id = ?',
+      args: [status, id]
+    });
+  }
+
+  // ============================================================================
+  // TIME-WEIGHTED ORDERS (Phase 5)
+  // ============================================================================
+
+  async createTimeWeightedOrder(order: Omit<TimeWeightedOrder, 'id'>): Promise<TimeWeightedOrder> {
+    const id = uuid();
+    await this.client.execute({
+      sql: `INSERT INTO time_weighted_orders (id, player_id, zone_id, resource, side, price, total_quantity, remaining_quantity, quantity_per_tick, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
+      args: [id, order.playerId, order.zoneId, order.resource, order.side, order.price, order.totalQuantity, order.remainingQuantity, order.quantityPerTick, order.createdAt]
+    });
+    return { id, ...order, status: 'active' };
+  }
+
+  async getActiveTimeWeightedOrders(): Promise<TimeWeightedOrder[]> {
+    const result = await this.client.execute("SELECT * FROM time_weighted_orders WHERE status = 'active'");
+    return result.rows.map(row => ({
+      id: row.id as string,
+      playerId: row.player_id as string,
+      zoneId: row.zone_id as string,
+      resource: row.resource as Resource,
+      side: row.side as 'buy' | 'sell',
+      price: row.price as number,
+      totalQuantity: row.total_quantity as number,
+      remainingQuantity: row.remaining_quantity as number,
+      quantityPerTick: row.quantity_per_tick as number,
+      status: row.status as 'active' | 'completed' | 'cancelled',
+      createdAt: row.created_at as number
+    }));
+  }
+
+  async updateTimeWeightedOrder(id: string, remainingQuantity: number): Promise<void> {
+    const status = remainingQuantity <= 0 ? 'completed' : 'active';
+    await this.client.execute({
+      sql: 'UPDATE time_weighted_orders SET remaining_quantity = ?, status = ? WHERE id = ?',
+      args: [remainingQuantity, status, id]
+    });
+  }
+
+  // ============================================================================
+  // AUDIT LOGS (Phase 7)
+  // ============================================================================
+
+  async createAuditLog(factionId: string, playerId: string, action: string, details: Record<string, unknown>): Promise<void> {
+    const id = uuid();
+    const tick = await this.getCurrentTick();
+    await this.client.execute({
+      sql: `INSERT INTO audit_logs (id, faction_id, player_id, action, details, tick, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      args: [id, factionId, playerId, action, JSON.stringify(details), tick, new Date().toISOString()]
+    });
+  }
+
+  async getFactionAuditLogs(factionId: string, limit: number = 100): Promise<AuditLogEntry[]> {
+    const result = await this.client.execute({
+      sql: 'SELECT * FROM audit_logs WHERE faction_id = ? ORDER BY tick DESC LIMIT ?',
+      args: [factionId, limit]
+    });
+    return result.rows.map(row => ({
+      id: row.id as string,
+      factionId: row.faction_id as string,
+      playerId: row.player_id as string,
+      action: row.action as string,
+      details: JSON.parse(row.details as string),
+      tick: row.tick as number,
+      timestamp: new Date(row.timestamp as string)
+    }));
+  }
+
   async seasonReset(newSeasonNumber: number): Promise<void> {
     // Reset all zones to neutral defaults
     await this.client.execute(

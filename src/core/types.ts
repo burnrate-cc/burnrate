@@ -425,6 +425,9 @@ export interface Player {
     freight: boolean;
     convoy: boolean;
   };
+
+  /** Tutorial progress (0-5, each step completed) */
+  tutorialStep: number;
 }
 
 export const TIER_LIMITS: Record<SubscriptionTier, {
@@ -693,7 +696,46 @@ export interface Trade {
 // CONTRACTS
 // ============================================================================
 
-export type ContractType = 'haul' | 'supply' | 'scout';
+export type ContractType = 'haul' | 'supply' | 'scout' | 'tutorial';
+
+/** Tutorial contract definitions */
+export const TUTORIAL_CONTRACTS = [
+  {
+    step: 1,
+    title: 'First Haul',
+    description: 'Buy 20 ore at the Hub market and deliver it to an adjacent Factory. This teaches market buying, inventory management, and basic shipping.',
+    type: 'tutorial' as ContractType,
+    reward: { credits: 100, reputation: 5 }
+  },
+  {
+    step: 2,
+    title: 'Factory Floor',
+    description: 'At a Factory, produce 10 metal from ore. This teaches production recipes and resource conversion.',
+    type: 'tutorial' as ContractType,
+    reward: { credits: 150, reputation: 5 }
+  },
+  {
+    step: 3,
+    title: 'Supply Run',
+    description: 'Craft and deposit 5 Supply Units to any Front zone. This teaches the SU recipe, supply mechanics, and multi-hop route planning.',
+    type: 'tutorial' as ContractType,
+    reward: { credits: 250, reputation: 10 }
+  },
+  {
+    step: 4,
+    title: 'Intel Sweep',
+    description: 'Scan 3 different zones to gather intel. This teaches the intel system, freshness decay, and faction intel sharing.',
+    type: 'tutorial' as ContractType,
+    reward: { credits: 200, reputation: 5 }
+  },
+  {
+    step: 5,
+    title: 'Join the Fight',
+    description: 'Join a faction and deposit any resource to the faction treasury. This teaches faction membership, treasury mechanics, and collaborative play.',
+    type: 'tutorial' as ContractType,
+    reward: { credits: 500, reputation: 15 }
+  }
+];
 
 export interface Contract {
   id: string;
@@ -769,7 +811,10 @@ export type GameEventType =
   | 'faction_joined'
   | 'faction_left'
   | 'player_action'
-  | 'stockpile_deposited';
+  | 'stockpile_deposited'
+  | 'tutorial_completed'
+  | 'doctrine_updated'
+  | 'webhook_triggered';
 
 export interface GameEvent {
   id: string;
@@ -859,4 +904,123 @@ export interface WorldState {
   orders: Map<string, MarketOrder>;
   contracts: Map<string, Contract>;
   intel: Map<string, IntelReport>;
+}
+
+// ============================================================================
+// DOCTRINES (Phase 5)
+// ============================================================================
+
+export interface Doctrine {
+  id: string;
+  factionId: string;
+  title: string;
+  content: string;
+  version: number;
+  createdAt: number;
+  updatedAt: number;
+  createdBy: string;
+}
+
+// ============================================================================
+// WEBHOOKS (Phase 6)
+// ============================================================================
+
+export type WebhookEventType =
+  | 'shipment_arrived' | 'shipment_intercepted'
+  | 'zone_critical' | 'zone_collapsed' | 'zone_captured'
+  | 'contract_completed' | 'contract_expired'
+  | 'market_order_filled'
+  | 'under_attack';
+
+export interface Webhook {
+  id: string;
+  playerId: string;
+  url: string;
+  events: WebhookEventType[];
+  active: boolean;
+  createdAt: number;
+  lastTriggeredAt: number | null;
+  failCount: number;
+}
+
+// ============================================================================
+// ADVANCED MARKET ORDERS (Phase 5)
+// ============================================================================
+
+export type AdvancedOrderType = 'conditional' | 'time_weighted';
+
+export interface ConditionalOrder {
+  id: string;
+  playerId: string;
+  zoneId: string;
+  resource: Resource;
+  side: 'buy' | 'sell';
+  triggerPrice: number;
+  quantity: number;
+  condition: 'price_below' | 'price_above';
+  status: 'active' | 'triggered' | 'cancelled';
+  createdAt: number;
+}
+
+export interface TimeWeightedOrder {
+  id: string;
+  playerId: string;
+  zoneId: string;
+  resource: Resource;
+  side: 'buy' | 'sell';
+  price: number;
+  totalQuantity: number;
+  remainingQuantity: number;
+  quantityPerTick: number;
+  status: 'active' | 'completed' | 'cancelled';
+  createdAt: number;
+}
+
+// ============================================================================
+// GARRISON (Phase 5)
+// ============================================================================
+
+export interface GarrisonUpgrade {
+  level: number;
+  defense: number;      // Passive capture defense multiplier
+  raidResist: number;   // Passive raid resistance
+  maintenance: number;  // Credits/tick to maintain
+}
+
+export const GARRISON_LEVELS: GarrisonUpgrade[] = [
+  { level: 0, defense: 0, raidResist: 0, maintenance: 0 },
+  { level: 1, defense: 0.1, raidResist: 0.1, maintenance: 10 },
+  { level: 2, defense: 0.2, raidResist: 0.2, maintenance: 25 },
+  { level: 3, defense: 0.35, raidResist: 0.35, maintenance: 50 },
+  { level: 4, defense: 0.5, raidResist: 0.5, maintenance: 100 },
+  { level: 5, defense: 0.75, raidResist: 0.75, maintenance: 200 },
+];
+
+// ============================================================================
+// DIPLOMACY (Phase 5)
+// ============================================================================
+
+export type DiplomacyStatus = 'allied' | 'neutral' | 'war' | 'nap';
+
+export interface DiplomacyRelation {
+  factionId: string;
+  targetFactionId: string;
+  status: DiplomacyStatus;
+  proposedBy: string;     // Player who proposed
+  acceptedBy: string | null;
+  createdAt: number;
+}
+
+// ============================================================================
+// FACTION ANALYTICS (Phase 7)
+// ============================================================================
+
+export interface AuditLogEntry {
+  id: string;
+  factionId: string;
+  playerId: string;
+  action: string;
+  details: Record<string, unknown>;
+  tick: number;
+  timestamp: Date;
 }

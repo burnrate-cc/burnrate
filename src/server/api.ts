@@ -1040,6 +1040,233 @@ app.delete('/contracts/:id', authMiddleware, async (c) => {
 });
 
 // ============================================================================
+// TUTORIAL
+// ============================================================================
+
+app.get('/tutorial', authMiddleware, async (c) => {
+  const playerId = getPlayerId(c);
+  const result = await engine.getTutorialStatus(playerId);
+  if (!result.success) throw new NotFoundError('Player', playerId);
+  return c.json(result);
+});
+
+app.post('/tutorial/complete', authMiddleware, writeRateLimitMiddleware(), async (c) => {
+  const playerId = getPlayerId(c);
+  const body = await c.req.json();
+  const step = body.step as number;
+  if (!step || step < 1 || step > 5) {
+    throw new ValidationError('Step must be 1-5');
+  }
+  const result = await engine.completeTutorialStep(playerId, step);
+  if (!result.success) {
+    throw new GameError(ErrorCodes.INVALID_STATE, result.error || 'Tutorial step failed');
+  }
+  return c.json(result);
+});
+
+// ============================================================================
+// SUBSCRIPTION
+// ============================================================================
+
+app.post('/subscription/upgrade', authMiddleware, writeRateLimitMiddleware(), async (c) => {
+  const playerId = getPlayerId(c);
+  const body = await c.req.json();
+  const { tier } = body;
+  if (!tier || !['operator', 'command'].includes(tier)) {
+    throw new ValidationError("Tier must be 'operator' or 'command'");
+  }
+  // In production, this would verify Stripe payment. For now, just update tier.
+  await db.updatePlayer(playerId, { tier: tier as any });
+  return c.json({ success: true, tier });
+});
+
+app.get('/subscription', authMiddleware, async (c) => {
+  const player = getPlayer(c);
+  return c.json({
+    tier: player.tier,
+    limits: TIER_LIMITS[player.tier]
+  });
+});
+
+// ============================================================================
+// DOCTRINES
+// ============================================================================
+
+app.get('/doctrines', authMiddleware, async (c) => {
+  const playerId = getPlayerId(c);
+  const result = await engine.getFactionDoctrines(playerId);
+  if (!result.success) {
+    throw new GameError(ErrorCodes.INVALID_STATE, result.error || 'Failed to get doctrines');
+  }
+  return c.json(result);
+});
+
+app.post('/doctrines', authMiddleware, writeRateLimitMiddleware(), async (c) => {
+  const playerId = getPlayerId(c);
+  const body = await c.req.json();
+  const { title, content } = body;
+  if (!title || !content) {
+    throw new ValidationError('Title and content are required');
+  }
+  const result = await engine.createDoctrine(playerId, title, content);
+  if (!result.success) {
+    throw new GameError(ErrorCodes.INVALID_STATE, result.error || 'Failed to create doctrine');
+  }
+  return c.json(result);
+});
+
+app.put('/doctrines/:id', authMiddleware, writeRateLimitMiddleware(), async (c) => {
+  const playerId = getPlayerId(c);
+  const doctrineId = c.req.param('id');
+  const body = await c.req.json();
+  const { content } = body;
+  if (!content) {
+    throw new ValidationError('Content is required');
+  }
+  const result = await engine.updateDoctrine(playerId, doctrineId, content);
+  if (!result.success) {
+    throw new GameError(ErrorCodes.INVALID_STATE, result.error || 'Failed to update doctrine');
+  }
+  return c.json(result);
+});
+
+app.delete('/doctrines/:id', authMiddleware, writeRateLimitMiddleware(), async (c) => {
+  const playerId = getPlayerId(c);
+  const doctrineId = c.req.param('id');
+  const result = await engine.deleteDoctrine(playerId, doctrineId);
+  if (!result.success) {
+    throw new GameError(ErrorCodes.INVALID_STATE, result.error || 'Failed to delete doctrine');
+  }
+  return c.json(result);
+});
+
+// ============================================================================
+// ADVANCED MARKET ORDERS
+// ============================================================================
+
+app.post('/market/conditional', authMiddleware, writeRateLimitMiddleware(), async (c) => {
+  const playerId = getPlayerId(c);
+  const body = await c.req.json();
+  const { zoneId, resource, side, triggerPrice, quantity, condition } = body;
+  if (!zoneId || !resource || !side || !triggerPrice || !quantity || !condition) {
+    throw new ValidationError('All fields required: zoneId, resource, side, triggerPrice, quantity, condition');
+  }
+  const result = await engine.createConditionalOrder(playerId, zoneId, resource, side, triggerPrice, quantity, condition);
+  if (!result.success) {
+    throw new GameError(ErrorCodes.INVALID_STATE, result.error || 'Failed to create conditional order');
+  }
+  return c.json(result);
+});
+
+app.post('/market/time-weighted', authMiddleware, writeRateLimitMiddleware(), async (c) => {
+  const playerId = getPlayerId(c);
+  const body = await c.req.json();
+  const { zoneId, resource, side, price, totalQuantity, quantityPerTick } = body;
+  if (!zoneId || !resource || !side || !price || !totalQuantity || !quantityPerTick) {
+    throw new ValidationError('All fields required: zoneId, resource, side, price, totalQuantity, quantityPerTick');
+  }
+  const result = await engine.createTimeWeightedOrder(playerId, zoneId, resource, side, price, totalQuantity, quantityPerTick);
+  if (!result.success) {
+    throw new GameError(ErrorCodes.INVALID_STATE, result.error || 'Failed to create time-weighted order');
+  }
+  return c.json(result);
+});
+
+// ============================================================================
+// WEBHOOKS
+// ============================================================================
+
+app.get('/webhooks', authMiddleware, async (c) => {
+  const playerId = getPlayerId(c);
+  const result = await engine.getWebhooks(playerId);
+  if (!result.success) {
+    throw new GameError(ErrorCodes.INVALID_STATE, result.error || 'Failed to get webhooks');
+  }
+  return c.json(result);
+});
+
+app.post('/webhooks', authMiddleware, writeRateLimitMiddleware(), async (c) => {
+  const playerId = getPlayerId(c);
+  const body = await c.req.json();
+  const { url, events } = body;
+  if (!url || !events || !Array.isArray(events)) {
+    throw new ValidationError('URL and events array are required');
+  }
+  const result = await engine.registerWebhook(playerId, url, events);
+  if (!result.success) {
+    throw new GameError(ErrorCodes.INVALID_STATE, result.error || 'Failed to register webhook');
+  }
+  return c.json(result);
+});
+
+app.delete('/webhooks/:id', authMiddleware, async (c) => {
+  const playerId = getPlayerId(c);
+  const webhookId = c.req.param('id');
+  const result = await engine.deleteWebhook(playerId, webhookId);
+  if (!result.success) {
+    throw new GameError(ErrorCodes.INVALID_STATE, result.error || 'Failed to delete webhook');
+  }
+  return c.json(result);
+});
+
+// ============================================================================
+// DATA EXPORT
+// ============================================================================
+
+app.get('/me/export', authMiddleware, async (c) => {
+  const playerId = getPlayerId(c);
+  const result = await engine.exportPlayerData(playerId);
+  if (!result.success) {
+    throw new GameError(ErrorCodes.INVALID_STATE, result.error || 'Export failed');
+  }
+  return c.json(result);
+});
+
+// ============================================================================
+// BATCH OPERATIONS
+// ============================================================================
+
+app.post('/batch', authMiddleware, writeRateLimitMiddleware(), async (c) => {
+  const playerId = getPlayerId(c);
+  const body = await c.req.json();
+  const { operations } = body;
+  if (!operations || !Array.isArray(operations)) {
+    throw new ValidationError('Operations array is required');
+  }
+  if (operations.length > 10) {
+    throw new ValidationError('Maximum 10 operations per batch');
+  }
+  const result = await engine.executeBatch(playerId, operations);
+  if (!result.success) {
+    throw new GameError(ErrorCodes.INVALID_STATE, result.error || 'Batch failed');
+  }
+  return c.json(result);
+});
+
+// ============================================================================
+// FACTION ANALYTICS
+// ============================================================================
+
+app.get('/faction/analytics', authMiddleware, async (c) => {
+  const playerId = getPlayerId(c);
+  const result = await engine.getFactionAnalytics(playerId);
+  if (!result.success) {
+    throw new GameError(ErrorCodes.INVALID_STATE, result.error || 'Analytics failed');
+  }
+  return c.json(result);
+});
+
+app.get('/faction/audit', authMiddleware, async (c) => {
+  const playerId = getPlayerId(c);
+  const limit = parseInt(c.req.query('limit') || '100');
+  const result = await engine.getFactionAuditLogs(playerId, limit);
+  if (!result.success) {
+    throw new GameError(ErrorCodes.INVALID_STATE, result.error || 'Audit log failed');
+  }
+  return c.json(result);
+});
+
+// ============================================================================
 // ADMIN / TICK SERVER
 // ============================================================================
 

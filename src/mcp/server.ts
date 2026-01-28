@@ -296,6 +296,83 @@ class GameAPIClient {
   async unlockLicense(type: string) {
     return this.request('POST', `/licenses/${type}/unlock`);
   }
+
+  // Phase 2: Tutorial
+  async getTutorialStatus() {
+    return this.request('GET', '/tutorial');
+  }
+
+  async completeTutorialStep(step: number) {
+    return this.request('POST', '/tutorial/complete', { step });
+  }
+
+  // Phase 4: Subscription
+  async getSubscription() {
+    return this.request('GET', '/subscription');
+  }
+
+  async upgradeSubscription(tier: string) {
+    return this.request('POST', '/subscription/upgrade', { tier });
+  }
+
+  // Phase 5: Doctrines
+  async getDoctrines() {
+    return this.request('GET', '/doctrines');
+  }
+
+  async createDoctrine(title: string, content: string) {
+    return this.request('POST', '/doctrines', { title, content });
+  }
+
+  async updateDoctrine(id: string, content: string) {
+    return this.request('PUT', `/doctrines/${id}`, { content });
+  }
+
+  async deleteDoctrine(id: string) {
+    return this.request('DELETE', `/doctrines/${id}`);
+  }
+
+  // Phase 5: Advanced market orders
+  async createConditionalOrder(zoneId: string, resource: string, side: string, triggerPrice: number, quantity: number, condition: string) {
+    return this.request('POST', '/market/conditional', { zoneId, resource, side, triggerPrice, quantity, condition });
+  }
+
+  async createTimeWeightedOrder(zoneId: string, resource: string, side: string, price: number, totalQuantity: number, quantityPerTick: number) {
+    return this.request('POST', '/market/time-weighted', { zoneId, resource, side, price, totalQuantity, quantityPerTick });
+  }
+
+  // Phase 6: Webhooks
+  async getWebhooks() {
+    return this.request('GET', '/webhooks');
+  }
+
+  async registerWebhook(url: string, events: string[]) {
+    return this.request('POST', '/webhooks', { url, events });
+  }
+
+  async deleteWebhook(id: string) {
+    return this.request('DELETE', `/webhooks/${id}`);
+  }
+
+  // Phase 6: Data export
+  async exportData() {
+    return this.request('GET', '/me/export');
+  }
+
+  // Phase 6: Batch operations
+  async executeBatch(operations: Array<{ action: string; params: any }>) {
+    return this.request('POST', '/batch', { operations });
+  }
+
+  // Phase 7: Faction analytics
+  async getFactionAnalytics() {
+    return this.request('GET', '/faction/analytics');
+  }
+
+  async getFactionAuditLogs(limit?: number) {
+    const query = limit ? `?limit=${limit}` : '';
+    return this.request('GET', `/faction/audit${query}`);
+  }
 }
 
 // MCP Server
@@ -826,6 +903,181 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
           required: ['targetType', 'targetId']
         }
+      },
+      // Phase 2: Tutorial
+      {
+        name: 'burnrate_tutorial',
+        description: 'View your tutorial progress and current step',
+        inputSchema: { type: 'object', properties: {}, required: [] }
+      },
+      {
+        name: 'burnrate_tutorial_complete',
+        description: 'Complete a tutorial step and receive rewards',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            step: { type: 'number', description: 'Tutorial step to complete (1-5)' }
+          },
+          required: ['step']
+        }
+      },
+      // Phase 4: Subscription
+      {
+        name: 'burnrate_subscription',
+        description: 'View your subscription tier and limits',
+        inputSchema: { type: 'object', properties: {}, required: [] }
+      },
+      // Phase 5: Doctrines
+      {
+        name: 'burnrate_doctrines',
+        description: 'View your faction doctrines (strategy documents)',
+        inputSchema: { type: 'object', properties: {}, required: [] }
+      },
+      {
+        name: 'burnrate_doctrine_create',
+        description: 'Create a new faction doctrine (officer+ only)',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            title: { type: 'string', description: 'Doctrine title' },
+            content: { type: 'string', description: 'Doctrine content (strategy, rules, etc.)' }
+          },
+          required: ['title', 'content']
+        }
+      },
+      {
+        name: 'burnrate_doctrine_update',
+        description: 'Update an existing faction doctrine (officer+ only)',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            doctrineId: { type: 'string', description: 'Doctrine ID to update' },
+            content: { type: 'string', description: 'New content' }
+          },
+          required: ['doctrineId', 'content']
+        }
+      },
+      {
+        name: 'burnrate_doctrine_delete',
+        description: 'Delete a faction doctrine (officer+ only)',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            doctrineId: { type: 'string', description: 'Doctrine ID to delete' }
+          },
+          required: ['doctrineId']
+        }
+      },
+      // Phase 5: Advanced market orders
+      {
+        name: 'burnrate_market_conditional',
+        description: 'Create a conditional market order that triggers when price crosses a threshold (Operator+ tier)',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            zoneId: { type: 'string', description: 'Zone ID for the order' },
+            resource: { type: 'string', description: 'Resource to trade' },
+            side: { type: 'string', enum: ['buy', 'sell'], description: 'Buy or sell' },
+            triggerPrice: { type: 'number', description: 'Price threshold that triggers the order' },
+            quantity: { type: 'number', description: 'Amount to trade' },
+            condition: { type: 'string', enum: ['price_below', 'price_above'], description: 'Trigger when price goes below or above threshold' }
+          },
+          required: ['zoneId', 'resource', 'side', 'triggerPrice', 'quantity', 'condition']
+        }
+      },
+      {
+        name: 'burnrate_market_twap',
+        description: 'Create a time-weighted average price order that drip-feeds quantity over ticks (Command tier)',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            zoneId: { type: 'string', description: 'Zone ID for the order' },
+            resource: { type: 'string', description: 'Resource to trade' },
+            side: { type: 'string', enum: ['buy', 'sell'], description: 'Buy or sell' },
+            price: { type: 'number', description: 'Price per unit' },
+            totalQuantity: { type: 'number', description: 'Total amount to trade' },
+            quantityPerTick: { type: 'number', description: 'Amount to release per tick' }
+          },
+          required: ['zoneId', 'resource', 'side', 'price', 'totalQuantity', 'quantityPerTick']
+        }
+      },
+      // Phase 6: Webhooks
+      {
+        name: 'burnrate_webhooks',
+        description: 'List your registered webhooks',
+        inputSchema: { type: 'object', properties: {}, required: [] }
+      },
+      {
+        name: 'burnrate_webhook_register',
+        description: 'Register a webhook to receive game event notifications (Operator+ tier, HTTPS only)',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            url: { type: 'string', description: 'HTTPS webhook URL' },
+            events: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Event types to subscribe to (e.g. shipment_delivered, zone_captured, combat)'
+            }
+          },
+          required: ['url', 'events']
+        }
+      },
+      {
+        name: 'burnrate_webhook_delete',
+        description: 'Delete a registered webhook',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            webhookId: { type: 'string', description: 'Webhook ID to delete' }
+          },
+          required: ['webhookId']
+        }
+      },
+      // Phase 6: Data export & batch
+      {
+        name: 'burnrate_export',
+        description: 'Export all your game data (player, units, shipments, contracts, intel, events)',
+        inputSchema: { type: 'object', properties: {}, required: [] }
+      },
+      {
+        name: 'burnrate_batch',
+        description: 'Execute multiple game actions in a single batch (max 10). Actions: travel, extract, produce, placeOrder, depositSU, scan.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            operations: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  action: { type: 'string', description: 'Action name' },
+                  params: { type: 'object', description: 'Action parameters' }
+                },
+                required: ['action', 'params']
+              },
+              description: 'Array of operations to execute'
+            }
+          },
+          required: ['operations']
+        }
+      },
+      // Phase 7: Faction analytics & audit
+      {
+        name: 'burnrate_faction_analytics',
+        description: 'View faction analytics including member activity, zone control, and resource flows (Operator+ tier, officer+ rank)',
+        inputSchema: { type: 'object', properties: {}, required: [] }
+      },
+      {
+        name: 'burnrate_faction_audit',
+        description: 'View faction audit logs tracking all member actions (Command tier only)',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            limit: { type: 'number', description: 'Max entries to return (default 100)' }
+          },
+          required: []
+        }
       }
     ]
   };
@@ -1076,6 +1328,91 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'burnrate_license_unlock':
         result = await client.unlockLicense(args?.type as string);
+        break;
+
+      // Phase 2: Tutorial
+      case 'burnrate_tutorial':
+        result = await client.getTutorialStatus();
+        break;
+
+      case 'burnrate_tutorial_complete':
+        result = await client.completeTutorialStep(args?.step as number);
+        break;
+
+      // Phase 4: Subscription
+      case 'burnrate_subscription':
+        result = await client.getSubscription();
+        break;
+
+      // Phase 5: Doctrines
+      case 'burnrate_doctrines':
+        result = await client.getDoctrines();
+        break;
+
+      case 'burnrate_doctrine_create':
+        result = await client.createDoctrine(args?.title as string, args?.content as string);
+        break;
+
+      case 'burnrate_doctrine_update':
+        result = await client.updateDoctrine(args?.doctrineId as string, args?.content as string);
+        break;
+
+      case 'burnrate_doctrine_delete':
+        result = await client.deleteDoctrine(args?.doctrineId as string);
+        break;
+
+      // Phase 5: Advanced market orders
+      case 'burnrate_market_conditional':
+        result = await client.createConditionalOrder(
+          args?.zoneId as string,
+          args?.resource as string,
+          args?.side as string,
+          args?.triggerPrice as number,
+          args?.quantity as number,
+          args?.condition as string
+        );
+        break;
+
+      case 'burnrate_market_twap':
+        result = await client.createTimeWeightedOrder(
+          args?.zoneId as string,
+          args?.resource as string,
+          args?.side as string,
+          args?.price as number,
+          args?.totalQuantity as number,
+          args?.quantityPerTick as number
+        );
+        break;
+
+      // Phase 6: Webhooks
+      case 'burnrate_webhooks':
+        result = await client.getWebhooks();
+        break;
+
+      case 'burnrate_webhook_register':
+        result = await client.registerWebhook(args?.url as string, args?.events as string[]);
+        break;
+
+      case 'burnrate_webhook_delete':
+        result = await client.deleteWebhook(args?.webhookId as string);
+        break;
+
+      // Phase 6: Export & Batch
+      case 'burnrate_export':
+        result = await client.exportData();
+        break;
+
+      case 'burnrate_batch':
+        result = await client.executeBatch(args?.operations as Array<{ action: string; params: any }>);
+        break;
+
+      // Phase 7: Faction analytics & audit
+      case 'burnrate_faction_analytics':
+        result = await client.getFactionAnalytics();
+        break;
+
+      case 'burnrate_faction_audit':
+        result = await client.getFactionAuditLogs(args?.limit as number);
         break;
 
       default:
@@ -1333,6 +1670,11 @@ server.setRequestHandler(ListPromptsRequestSchema, async () => {
       {
         name: 'season_progress',
         description: 'Review your season performance and suggest ways to climb the leaderboard',
+        arguments: []
+      },
+      {
+        name: 'game_overview',
+        description: 'Learn the basics of BURNRATE. Perfect for new players or a refresher on game mechanics.',
         arguments: []
       }
     ]
@@ -1675,6 +2017,71 @@ Analyze my progress:
 4. Specific actions to gain more points
 5. Time remaining and realistic goals
 6. Reputation grind progress`
+              }
+            }
+          ]
+        };
+      }
+
+      case 'game_overview': {
+        const [status, tutorial] = await Promise.all([
+          safeFetch(() => client.getMe(), null),
+          safeFetch(() => client.getTutorialStatus(), null)
+        ]);
+
+        return {
+          messages: [
+            {
+              role: 'user',
+              content: {
+                type: 'text',
+                text: `Welcome to BURNRATE — a logistics war MMO played through Claude Code.
+
+## How It Works
+You control territory by keeping it supplied. Every zone burns Supply Units (SU) each tick. When supply runs out, the zone collapses. The best generals still lose if they can't feed the front.
+
+## Resource Chain
+Raw resources (T0) → Processed goods (T1) → Strategic materials (T2) → Supply Units
+
+**T0 (Raw):** ore, fuel, grain, fiber — extract at Fields (5 credits/unit)
+**T1 (Processed):** metal, chemicals, rations, textiles — produce at Factories
+**T2 (Strategic):** ammo, medkits, parts, comms — produce at Factories
+**SU:** 2 rations + 1 fuel + 1 parts + 1 ammo → 1 Supply Unit
+
+## Zone Types
+- **Hubs** — Safe starting areas with marketplaces
+- **Fields** — Extract raw resources (T0)
+- **Factories** — Convert resources, produce units
+- **Junctions** — Crossroads, no burn cost
+- **Fronts** — Contested territory, high burn
+- **Strongholds** — Victory objectives, highest burn
+
+## Key Actions
+1. **Extract** resources at Fields
+2. **Produce** goods at Factories
+3. **Ship** cargo between zones
+4. **Trade** on zone markets
+5. **Supply** zones with SU to hold territory
+6. **Scan** zones/routes for intel
+7. **Capture** neutral or collapsed zones
+
+## Military
+- **Escorts** protect shipments from raiders
+- **Raiders** interdict enemy routes
+
+## Progression
+Earn reputation through deliveries, contracts, and captures. Unlock freight and convoy licenses for bigger shipments.
+
+## Factions
+Join or create factions. Control territory together, share intel, and coordinate logistics.
+
+## Your Current Status
+${status ? JSON.stringify(status, null, 2) : 'Not authenticated — use burnrate_join or burnrate_set_api_key to get started.'}
+
+## Tutorial Progress
+${tutorial ? `Step ${(tutorial as any).step || 0} of ${(tutorial as any).total || 5}${(tutorial as any).currentContract ? `\nNext: ${(tutorial as any).currentContract.title} — ${(tutorial as any).currentContract.description}` : '\nTutorial complete!'}` : 'Use burnrate_tutorial to check your progress.'}
+
+Based on my current status, what should I do first? Walk me through getting started step by step.`
               }
             }
           ]

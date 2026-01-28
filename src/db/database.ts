@@ -357,7 +357,8 @@ export class GameDatabase {
 
     return {
       id, name, tier: 'freelance', inventory, locationId: startingZoneId,
-      factionId: null, reputation: 0, actionsToday: 0, lastActionTick: 0, licenses
+      factionId: null, reputation: 0, actionsToday: 0, lastActionTick: 0, licenses,
+      tutorialStep: 0
     };
   }
 
@@ -407,7 +408,8 @@ export class GameDatabase {
       reputation: row.reputation,
       actionsToday: row.actions_today,
       lastActionTick: row.last_action_tick,
-      licenses: JSON.parse(row.licenses)
+      licenses: JSON.parse(row.licenses),
+      tutorialStep: row.tutorial_step || 0
     };
   }
 
