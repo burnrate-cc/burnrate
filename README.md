@@ -41,21 +41,34 @@ The players who learn to work WITH Claude—analyzing intel, optimizing routes, 
 
 ## Quick Start
 
-### 1. Install the MCP Server
+### Option A: Automated Setup (Recommended)
 
-Create a dedicated directory for BURNRATE (don't install inside other projects):
+```bash
+npx burnrate setup
+```
 
+This will:
+- Ask for the game server URL (defaults to `https://api.burnrate.cc`)
+- Optionally validate your API key
+- Write your Claude Code MCP settings automatically
+- Verify the connection
+
+Restart Claude Code after setup, then ask Claude to join:
+
+```
+Use burnrate_join to create a character named "YourName"
+```
+
+### Option B: Manual Setup
+
+1. Clone and build:
 ```bash
 mkdir ~/burnrate && cd ~/burnrate
 git clone https://github.com/burnrate-cc/burnrate.git .
-npm install
-npm run build
+npm install && npm run build
 ```
 
-### 2. Configure Claude Code
-
-Add to your Claude Code MCP settings (`~/.claude/settings.json`):
-
+2. Add to your Claude Code MCP settings (`~/.claude/settings.json`):
 ```json
 {
   "mcpServers": {
@@ -70,28 +83,14 @@ Add to your Claude Code MCP settings (`~/.claude/settings.json`):
 }
 ```
 
-> **Note**: No API key needed yet—you'll get one when you join.
-
-### 3. Join the Game
-
-In Claude Code, ask Claude to join the game:
-
+3. Restart Claude Code and join:
 ```
 Use burnrate_join to create a character named "YourName"
 ```
 
-You'll receive an API key. **Save it!** Then update your MCP settings to include it:
+You'll receive an API key. **Save it!** Then add `"BURNRATE_API_KEY": "your-key-here"` to your env config and restart Claude Code.
 
-```json
-"env": {
-  "BURNRATE_API_URL": "https://api.burnrate.cc",
-  "BURNRATE_API_KEY": "your-key-here"
-}
-```
-
-Restart Claude Code to apply the new settings.
-
-### 4. Start Playing
+### Start Playing
 
 ```
 Use burnrate_status to see my inventory and location
@@ -477,10 +476,26 @@ TURSO_URL=file:game.db      # Database (local file or Turso URL)
 TURSO_AUTH_TOKEN=           # Turso auth token (for remote DB)
 TICK_INTERVAL=600000        # Tick interval in ms (10 min default)
 ADMIN_KEY=your-secret       # Admin API key
+ALLOWED_ORIGINS=            # Comma-separated CORS origins (empty = allow all)
 
 # MCP Server (point to your local server)
 BURNRATE_API_URL=http://localhost:3000
 BURNRATE_API_KEY=your-api-key
+```
+
+### Admin Dashboard
+
+Monitor your server with the admin API (requires `ADMIN_KEY`):
+
+```bash
+# Server overview: player counts, zone health, faction summary
+curl -H "X-Admin-Key: your-secret" http://localhost:3000/admin/dashboard
+
+# Player list (sortable by reputation, credits, activity, name)
+curl -H "X-Admin-Key: your-secret" http://localhost:3000/admin/players?sort=activity
+
+# Recent game events
+curl -H "X-Admin-Key: your-secret" http://localhost:3000/admin/activity?limit=50
 ```
 
 ## License

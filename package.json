@@ -7,10 +7,16 @@
   "bin": {
     "burnrate": "./dist/cli/index.js"
   },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "dev": "tsx src/cli/index.ts",
     "build": "tsc",
     "start": "node dist/cli/index.js",
+    "setup": "node dist/cli/setup.js",
     "api": "node dist/server/api.js",
     "api:dev": "tsx src/server/api.ts",
     "mcp": "node dist/mcp/server.js",

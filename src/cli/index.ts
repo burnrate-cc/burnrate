@@ -5,6 +5,12 @@
  * The front doesn't feed itself.
  */
 
+// Route 'setup' command to the setup script before loading heavy dependencies
+if (process.argv[2] === 'setup') {
+  await import('./setup.js');
+  process.exit(0);
+}
+
 import { Command } from 'commander';
 import { GameDatabase } from '../db/database.js';
 import { GameEngine } from '../core/engine.js';

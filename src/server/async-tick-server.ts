@@ -56,7 +56,18 @@ async function main() {
   await processTick();
 
   // Schedule regular ticks
-  setInterval(processTick, TICK_INTERVAL);
+  const interval = setInterval(processTick, TICK_INTERVAL);
+
+  // Graceful shutdown
+  const shutdown = () => {
+    console.log('\n[TICK SERVER] Shutting down...');
+    clearInterval(interval);
+    console.log('[TICK SERVER] Stopped.');
+    process.exit(0);
+  };
+
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
 }
 
 main().catch(console.error);

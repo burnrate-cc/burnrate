@@ -40,7 +40,12 @@ app.use('*', async (c, next) => {
 });
 
 // CORS
-app.use('*', cors());
+const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [];
+app.use('*', cors({
+  origin: allowedOrigins.length > 0 ? allowedOrigins : '*',
+  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'X-API-Key', 'X-Admin-Key'],
+}));
 
 // Global rate limit (before auth)
 app.use('*', rateLimitMiddleware({ maxRequests: 100 }));
@@ -1271,20 +1276,143 @@ app.get('/faction/audit', authMiddleware, async (c) => {
 // ============================================================================
 
 app.post('/admin/tick', async (c) => {
-  const adminKey = c.req.header('X-Admin-Key');
-  if (adminKey !== process.env.ADMIN_KEY) {
-    return c.json({ error: 'Unauthorized' }, 401);
-  }
+  if (!await adminAuth(c)) return c.json({ error: 'Unauthorized' }, 401);
 
   const result = await engine.processTick();
   return c.json({ tick: result.tick, eventCount: result.events.length });
 });
 
-app.post('/admin/init-world', async (c) => {
+// Admin middleware for all /admin routes below
+const adminAuth = async (c: Context): Promise<boolean> => {
   const adminKey = c.req.header('X-Admin-Key');
-  if (adminKey !== process.env.ADMIN_KEY) {
-    return c.json({ error: 'Unauthorized' }, 401);
+  return adminKey === process.env.ADMIN_KEY;
+};
+
+app.get('/admin/dashboard', async (c) => {
+  if (!await adminAuth(c)) return c.json({ error: 'Unauthorized' }, 401);
+
+  const [players, zones, factions] = await Promise.all([
+    db.getAllPlayers(),
+    db.getAllZones(),
+    db.getAllFactions()
+  ]);
+
+  const now = Date.now();
+  const currentTick = await db.getCurrentTick();
+
+  // Active = acted within last 144 ticks (1 day at 10min ticks)
+  const activePlayers = players.filter(p => currentTick - p.lastActionTick < 144);
+  // Recent = acted within last 6 ticks (1 hour)
+  const recentPlayers = players.filter(p => currentTick - p.lastActionTick < 6);
+
+  const controlledZones = zones.filter(z => z.ownerId);
+  const criticalZones = zones.filter(z => z.supplyLevel < 50 && z.burnRate > 0);
+  const collapsedZones = zones.filter(z => z.supplyLevel === 0 && z.burnRate > 0);
+
+  const tierCounts = { freelance: 0, operator: 0, command: 0 };
+  for (const p of players) {
+    tierCounts[p.tier as keyof typeof tierCounts]++;
   }
+
+  return c.json({
+    overview: {
+      totalPlayers: players.length,
+      activePlayers24h: activePlayers.length,
+      activePlayersLastHour: recentPlayers.length,
+      totalFactions: factions.length,
+      totalZones: zones.length,
+      controlledZones: controlledZones.length,
+      criticalZones: criticalZones.length,
+      collapsedZones: collapsedZones.length,
+      currentTick
+    },
+    tiers: tierCounts,
+    topPlayers: players
+      .sort((a, b) => b.reputation - a.reputation)
+      .slice(0, 20)
+      .map(p => ({
+        id: p.id,
+        name: p.name,
+        tier: p.tier,
+        reputation: p.reputation,
+        credits: p.inventory.credits,
+        lastActionTick: p.lastActionTick,
+        factionId: p.factionId,
+        tutorialStep: p.tutorialStep
+      })),
+    factions: factions.map(f => ({
+      id: f.id,
+      name: f.name,
+      tag: f.tag,
+      memberCount: f.members.length,
+      zoneCount: zones.filter(z => z.ownerId === f.id).length
+    })),
+    zoneHealth: {
+      fortified: zones.filter(z => z.supplyLevel >= 100 && z.complianceStreak >= 50).length,
+      supplied: zones.filter(z => z.supplyLevel >= 100 && z.complianceStreak < 50).length,
+      strained: zones.filter(z => z.supplyLevel >= 50 && z.supplyLevel < 100).length,
+      critical: criticalZones.length,
+      collapsed: collapsedZones.length,
+      neutral: zones.filter(z => !z.ownerId && z.burnRate === 0).length
+    }
+  });
+});
+
+app.get('/admin/players', async (c) => {
+  if (!await adminAuth(c)) return c.json({ error: 'Unauthorized' }, 401);
+
+  const players = await db.getAllPlayers();
+  const limit = parseInt(c.req.query('limit') || '100');
+  const sort = c.req.query('sort') || 'reputation';
+
+  const sorted = [...players].sort((a, b) => {
+    switch (sort) {
+      case 'credits': return b.inventory.credits - a.inventory.credits;
+      case 'activity': return b.lastActionTick - a.lastActionTick;
+      case 'name': return a.name.localeCompare(b.name);
+      default: return b.reputation - a.reputation;
+    }
+  });
+
+  return c.json({
+    total: players.length,
+    players: sorted.slice(0, limit).map(p => ({
+      id: p.id,
+      name: p.name,
+      tier: p.tier,
+      reputation: p.reputation,
+      credits: p.inventory.credits,
+      lastActionTick: p.lastActionTick,
+      locationId: p.locationId,
+      factionId: p.factionId,
+      tutorialStep: p.tutorialStep
+    }))
+  });
+});
+
+app.get('/admin/activity', async (c) => {
+  if (!await adminAuth(c)) return c.json({ error: 'Unauthorized' }, 401);
+
+  const limit = parseInt(c.req.query('limit') || '200');
+  const type = c.req.query('type') || undefined;
+  const events = await db.getEvents({ limit, type });
+
+  return c.json({
+    total: events.length,
+    events: events.map(e => ({
+      id: e.id,
+      type: e.type,
+      tick: e.tick,
+      actorId: e.actorId,
+      actorType: e.actorType,
+      data: e.data,
+      timestamp: e.timestamp
+    }))
+  });
+});
+
+app.post('/admin/init-world', async (c) => {
+  if (!await adminAuth(c)) return c.json({ error: 'Unauthorized' }, 401);
 
   // Check if world already exists
   const existingZones = await db.getAllZones();
@@ -1330,7 +1458,7 @@ const port = parseInt(process.env.PORT || '3000');
 
 if (process.env.NODE_ENV !== 'test') {
   createApp().then((application) => {
-    serve({
+    const server = serve({
       fetch: application.fetch,
       port
     }, () => {
@@ -1345,6 +1473,19 @@ if (process.env.NODE_ENV !== 'test') {
 ╚══════════════════════════════════════════════════════════════╝
 `);
     });
+
+    const shutdown = () => {
+      console.log('\nShutting down API server...');
+      server.close(() => {
+        console.log('API server stopped.');
+        process.exit(0);
+      });
+      // Force exit after 5 seconds if connections don't close
+      setTimeout(() => process.exit(1), 5000);
+    };
+
+    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', shutdown);
   });
 }
 
