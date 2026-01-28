@@ -10,7 +10,7 @@ import { GameDatabase } from '../db/database.js';
 import { GameEngine } from '../core/engine.js';
 import { generateWorld, seedMarkets } from '../core/worldgen.js';
 import { formatView, formatZone, formatRoutes, formatMarket, formatShipments, formatEvents, formatHelp } from './format.js';
-import { getSupplyState, TIER_LIMITS, SHIPMENT_SPECS } from '../core/types.js';
+import { getSupplyState, TIER_LIMITS, SHIPMENT_SPECS, Resource } from '../core/types.js';
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
@@ -797,7 +797,8 @@ program
           details: {
             fromZoneId: fromZone.id,
             toZoneId: toZone.id,
-            cargo: { [resource]: qty }
+            resource: resource as Resource,
+            quantity: qty
           },
           deadline: tick + 100,
           reward: { credits: reward, reputation: 10 },

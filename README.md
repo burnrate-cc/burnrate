@@ -8,7 +8,8 @@
 
 Hold territory by keeping it supplied. Every zone burns Supply Units each tick. When the supply stops, the zone falls. The best generals still lose if they can't feed the front.
 
-- **CLI-native**: Your terminal is your war room
+- **MCP-native**: Play entirely through Claude Code's MCP integration
+- **Multiplayer**: Compete and collaborate on shared servers
 - **AI-collaborative**: Claude is your operations advisor
 - **Operator advantage**: No grinding, no twitch—just better systems
 
@@ -16,7 +17,7 @@ Hold territory by keeping it supplied. Every zone burns Supply Units each tick. 
 
 What if using Claude well *was* the actual game?
 
-BURNRATE is designed for automation. The manual commands are training wheels. The real game is writing Claude agents that optimize extraction, find efficient routes, spot market arbitrage, and coordinate faction logistics.
+BURNRATE is designed for automation. The MCP tools are your interface, but the real game is building Claude agents that optimize extraction, find efficient routes, spot market arbitrage, and coordinate faction logistics.
 
 The players who learn to work WITH Claude—analyzing intel, drafting doctrine, building automation—win. Skills transfer directly to real work.
 
@@ -24,25 +25,66 @@ The players who learn to work WITH Claude—analyzing intel, drafting doctrine, 
 
 ---
 
+## Architecture
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌──────────┐
+│ Claude Code │────▶│ MCP Server  │────▶│  Game API   │────▶│  Turso   │
+│  (Player)   │◀────│  (Local)    │◀────│  (Hosted)   │◀────│ Database │
+└─────────────┘     └─────────────┘     └─────────────┘     └──────────┘
+```
+
+- **Claude Code** - Your terminal and AI advisor
+- **MCP Server** - Runs locally, provides tools/resources/prompts
+- **Game API** - Hosted server running the game simulation
+- **Turso** - Distributed SQLite database for persistence
+
 ## Quick Start
 
+### 1. Install the MCP Server
+
 ```bash
-# Install
+git clone <repo>
+cd burnrate
 npm install
 npm run build
+```
 
-# Join the game
-npx burnrate join YourName
+### 2. Configure Claude Code
 
-# See the world
-npx burnrate view
-npx burnrate status
+Add to your Claude Code MCP settings:
 
-# Start playing
-npx burnrate route              # See connections from your location
-npx burnrate extract 50         # Extract resources (at Fields)
-npx burnrate produce metal 10   # Convert resources (at Factories)
-npx burnrate ship --to Factory.North --cargo "ore:50"
+```json
+{
+  "mcpServers": {
+    "burnrate": {
+      "command": "node",
+      "args": ["/path/to/burnrate/dist/mcp/server.js"],
+      "env": {
+        "BURNRATE_API_URL": "https://your-game-server.com",
+        "BURNRATE_API_KEY": "your-api-key-here"
+      }
+    }
+  }
+}
+```
+
+### 3. Join the Game
+
+In Claude Code, use the MCP tools:
+
+```
+Use burnrate_join to create a character named "YourName"
+```
+
+Save your API key! You'll need it to authenticate in future sessions.
+
+### 4. Start Playing
+
+```
+Use burnrate_status to see my inventory and location
+Use burnrate_view to see the world map
+Use burnrate_routes to see where I can travel
 ```
 
 ## Core Concepts
@@ -65,67 +107,138 @@ grain, fiber     rations, textiles  parts, comms
 - **Fronts** - Contested territory, high burn
 - **Strongholds** - Victory objectives, highest burn
 
-### The Meta
-This game is designed for **automation**. Manual play works, but the real game is writing Claude agents that:
-- Optimize extraction and production
-- Find efficient multi-hop routes (pathfinding not provided)
-- Analyze market arbitrage opportunities
-- Coordinate faction logistics
-- Gather and act on intelligence
+### Intel Decay
+Intelligence gathered through scanning decays over time:
+- **Fresh** (<10 ticks) - Full accuracy
+- **Stale** (10-50 ticks) - Reduced signal quality, some data obscured
+- **Expired** (>50 ticks) - Unreliable, most data unavailable
 
-## Commands
+### Seasons
+The game runs in seasons (4 weeks each). Earn points through:
+- Controlling zones (100 pts/zone/week)
+- Completing shipments (10 pts each)
+- Fulfilling contracts (25 pts each)
+- Delivering supplies (1 pt per SU)
+- Winning combat (50 pts per victory)
+- Gaining reputation (2 pts per rep point)
 
-### Navigation & Info
-```bash
-burnrate view                    # Main dashboard
-burnrate view zone <name>        # Zone details
-burnrate route [zone]            # Direct connections from zone
-burnrate status                  # Your inventory and stats
-burnrate scan <zone>             # Gather intel (shared with faction)
-```
+## MCP Tools Reference
+
+### Status & Navigation
+| Tool | Description |
+|------|-------------|
+| `burnrate_status` | Your current status, inventory, location |
+| `burnrate_view` | World map or specific zone details |
+| `burnrate_routes` | Available routes from location |
+| `burnrate_travel` | Move to an adjacent zone |
 
 ### Economy
-```bash
-burnrate extract <qty>           # Extract at Fields
-burnrate produce <item> <qty>    # Produce at Factories
-burnrate ship --to <zone> --cargo "res:qty" [--via zone1,zone2]
-burnrate buy <resource> <qty> [--limit price]
-burnrate sell <resource> <qty> [--limit price]
-```
+| Tool | Description |
+|------|-------------|
+| `burnrate_extract` | Gather raw resources at Fields (5cr/unit) |
+| `burnrate_produce` | Convert resources at Factories |
+| `burnrate_ship` | Send cargo along a route |
+| `burnrate_shipments` | View active shipments |
+| `burnrate_market_buy` | Place buy order |
+| `burnrate_market_sell` | Place sell order |
+| `burnrate_market_view` | View market orders |
 
 ### Military
-```bash
-burnrate units                   # List your units
-burnrate units sell <id> <price> # List unit for sale
-burnrate hire [unit-id]          # Buy units at Hubs
-burnrate units escort <unit> <shipment>
-burnrate units raider <unit> <from> <to>
-```
+| Tool | Description |
+|------|-------------|
+| `burnrate_units` | List your military units |
+| `burnrate_units_escort` | Assign escort to protect shipment |
+| `burnrate_units_raider` | Deploy raider to interdict route |
+| `burnrate_units_sell` | List unit for sale |
+| `burnrate_hire` | Purchase a unit |
+
+### Intelligence
+| Tool | Description |
+|------|-------------|
+| `burnrate_scan` | Gather intel on zone/route |
+| `burnrate_intel` | View your intel with freshness |
+| `burnrate_intel_target` | Get intel on specific target |
+
+### Territory
+| Tool | Description |
+|------|-------------|
+| `burnrate_supply` | Deposit Supply Units to zone |
+| `burnrate_capture` | Capture neutral/collapsed zone |
 
 ### Factions
-```bash
-burnrate faction create <name> <TAG>
-burnrate faction join <name>
-burnrate faction info
-burnrate faction members
-burnrate faction intel           # View shared faction intelligence
-burnrate capture                 # Capture current zone for faction
-burnrate supply <amount>         # Deposit SU to zone
-```
+| Tool | Description |
+|------|-------------|
+| `burnrate_factions` | List all factions |
+| `burnrate_faction_create` | Create new faction |
+| `burnrate_faction_join` | Join existing faction |
+| `burnrate_faction_leave` | Leave current faction |
+| `burnrate_faction_details` | Your faction info |
+| `burnrate_faction_intel` | Shared faction intelligence |
+| `burnrate_faction_promote` | Promote member to officer |
+| `burnrate_faction_demote` | Demote officer to member |
+| `burnrate_faction_kick` | Remove member from faction |
+| `burnrate_faction_transfer` | Transfer leadership |
+| `burnrate_treasury_deposit` | Add resources to treasury |
+| `burnrate_treasury_withdraw` | Take resources from treasury |
 
 ### Contracts
-```bash
-burnrate contracts               # List available
-burnrate contracts post haul <from> <to> <res:qty> <reward>
-burnrate contracts accept <id>
-```
+| Tool | Description |
+|------|-------------|
+| `burnrate_contracts` | View available contracts |
+| `burnrate_contracts_mine` | Your posted/accepted contracts |
+| `burnrate_contract_create` | Post a new contract |
+| `burnrate_contract_accept` | Accept a contract |
+| `burnrate_contract_complete` | Complete and claim reward |
+| `burnrate_contract_cancel` | Cancel unaccepted contract |
 
-### Server
-```bash
-burnrate server status           # Check tick server
-npm run server                   # Run tick server (10 min ticks)
-npm run server:fast              # Run tick server (1 sec ticks, testing)
-```
+### Progression
+| Tool | Description |
+|------|-------------|
+| `burnrate_reputation` | Your reputation score and title |
+| `burnrate_licenses` | License status and requirements |
+| `burnrate_license_unlock` | Unlock freight or convoy license |
+| `burnrate_events` | Your event history |
+
+### Seasons & Leaderboards
+| Tool | Description |
+|------|-------------|
+| `burnrate_season` | Current season info |
+| `burnrate_leaderboard` | Season rankings |
+| `burnrate_season_score` | Your season score |
+
+## MCP Resources
+
+Access these as read-only data sources:
+
+| Resource URI | Description |
+|--------------|-------------|
+| `burnrate://status` | Player status and inventory |
+| `burnrate://world` | World state (tick, season) |
+| `burnrate://zones` | All zones with controllers |
+| `burnrate://routes` | Routes from current location |
+| `burnrate://shipments` | Active shipments |
+| `burnrate://units` | Military units |
+| `burnrate://market` | Current market orders |
+| `burnrate://contracts` | Available contracts |
+| `burnrate://intel` | Intel reports with freshness |
+| `burnrate://faction` | Faction details |
+| `burnrate://leaderboard` | Season rankings |
+| `burnrate://reputation` | Reputation progress |
+| `burnrate://licenses` | License status |
+
+## MCP Prompts
+
+Pre-built analysis templates:
+
+| Prompt | Description |
+|--------|-------------|
+| `situation_analysis` | Analyze current state and suggest priorities |
+| `route_planning` | Find safe and profitable shipping routes |
+| `threat_assessment` | Assess threats using available intel |
+| `trade_opportunities` | Find profitable market trades |
+| `mission_briefing` | Get briefing for extraction/production/shipping/capture/contract |
+| `faction_strategy` | Analyze faction position and strategy |
+| `season_progress` | Review performance and improvement suggestions |
 
 ## Production Recipes
 
@@ -152,30 +265,65 @@ npm run server:fast              # Run tick server (1 sec ticks, testing)
 |--------|--------|
 | 1 SU | 2 rations + 1 fuel + 1 parts + 1 ammo |
 
+## Shipment Licenses
+
+| License | Rep Required | Cost | Capacity |
+|---------|--------------|------|----------|
+| Courier | 0 | Free | Small cargo |
+| Freight | 50 | 500cr | Medium cargo |
+| Convoy | 200 | 2000cr | Heavy armored |
+
+## Reputation Titles
+
+| Reputation | Title |
+|------------|-------|
+| 0+ | Unknown |
+| 25+ | Novice |
+| 75+ | Runner |
+| 150+ | Hauler |
+| 300+ | Veteran |
+| 500+ | Elite |
+| 750+ | Master |
+| 1000 | Legend |
+
 ## Subscription Tiers
 
-| Tier | Actions/Day | Market Orders | Concurrent Contracts |
-|------|-------------|---------------|---------------------|
-| Freelance (free) | 200 | 5 | 3 |
-| Operator | 500 | 20 | 10 |
-| Command | 1000 | 50 | 25 |
+| Tier | Actions/Day | Market Orders | Contracts | Event History |
+|------|-------------|---------------|-----------|---------------|
+| Freelance | 200 | 5 | 3 | 200 |
+| Operator | 500 | 20 | 10 | 10,000 |
+| Command | 1000 | 50 | 25 | 100,000 |
 
-## Architecture
+## Running Your Own Server
 
+### Development
+
+```bash
+# Build
+npm run build
+
+# Start API server (default port 3000)
+npm run server
+
+# Start with fast ticks for testing (1 second)
+npm run server:fast
+
+# Check server status
+node dist/cli/index.js server status
 ```
-src/
-├── cli/           # Command-line interface
-│   ├── index.ts   # Command definitions
-│   └── format.ts  # Terminal output formatting
-├── core/          # Game logic
-│   ├── types.ts   # Type definitions
-│   ├── engine.ts  # Game simulation
-│   ├── worldgen.ts # Map generation
-│   └── pathfinding.ts # (Internal use only)
-├── db/            # Persistence
-│   └── database.ts # SQLite layer
-└── server/        # Tick processing
-    └── tick-server.ts
+
+### Environment Variables
+
+```bash
+# API Server
+PORT=3000                    # Server port
+TURSO_URL=file:game.db      # Turso database URL
+TURSO_AUTH_TOKEN=           # Turso auth token (for remote)
+TICK_INTERVAL=600000        # Tick interval in ms (10 min default)
+
+# MCP Server (client-side)
+BURNRATE_API_URL=http://localhost:3000
+BURNRATE_API_KEY=your-api-key
 ```
 
 ## Building Your Own Tools
@@ -187,6 +335,7 @@ The game intentionally provides minimal tooling. Build your competitive advantag
 - **Supply Chain Optimizer** - Automate extraction → production → delivery.
 - **Intel Aggregator** - Track zone states over time, predict collapses.
 - **Risk Analyzer** - Model raider activity, route safety.
+- **Faction Coordinator** - Orchestrate multi-player logistics.
 
 ## License
 
@@ -194,4 +343,4 @@ MIT
 
 ---
 
-**burnrate-cc** | A Claude Code game
+**BURNRATE** | A Claude Code game

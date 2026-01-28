@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "burnrate": {
+      "command": "node",
+      "args": ["/path/to/burnrate/dist/mcp/server.js"],
+      "env": {
+        "BURNRATE_API_URL": "https://your-burnrate-api.railway.app",
+        "BURNRATE_API_KEY": "your-api-key-after-joining"
+      }
+    }
+  }
+}

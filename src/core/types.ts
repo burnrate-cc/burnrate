@@ -206,6 +206,71 @@ export const SHIPMENT_SPECS: Record<ShipmentType, {
   convoy: { capacity: 200, speedModifier: 1.33, visibilityModifier: 2.0 }
 };
 
+/** License unlock requirements */
+export const LICENSE_REQUIREMENTS: Record<ShipmentType, {
+  reputationRequired: number;
+  creditsCost: number;
+  description: string;
+}> = {
+  courier: { reputationRequired: 0, creditsCost: 0, description: 'Basic small cargo transport' },
+  freight: { reputationRequired: 50, creditsCost: 500, description: 'Medium cargo transport' },
+  convoy: { reputationRequired: 200, creditsCost: 2000, description: 'Heavy armored transport' }
+};
+
+/** Reputation rewards for various actions */
+export const REPUTATION_REWARDS = {
+  // Shipments
+  shipmentDelivered: 5,           // per successful delivery
+  shipmentIntercepted: -10,       // lost cargo
+  escortSuccess: 3,               // escort protected a shipment
+
+  // Contracts
+  contractCompleted: 10,          // base reward (+ contract-specific)
+  contractFailed: -20,            // failed to complete
+  contractBonus: 5,               // completed early
+
+  // Zone supply
+  supplyDelivered: 2,             // per SU delivered
+  zoneCaptured: 25,               // captured a zone
+
+  // Combat
+  raiderDestroyed: 5,             // destroyed an enemy raider
+  escortDestroyed: -5,            // lost an escort
+
+  // Market
+  tradeCompleted: 1,              // completed a trade
+
+  // Daily decay (for inactive players)
+  dailyDecay: -1,                 // lose 1 rep per day of inactivity
+
+  // Maximum reputation
+  maxReputation: 1000
+} as const;
+
+/** Reputation thresholds for titles */
+export const REPUTATION_TITLES: { threshold: number; title: string }[] = [
+  { threshold: 0, title: 'Unknown' },
+  { threshold: 25, title: 'Runner' },
+  { threshold: 50, title: 'Trader' },
+  { threshold: 100, title: 'Hauler' },
+  { threshold: 200, title: 'Merchant' },
+  { threshold: 350, title: 'Supplier' },
+  { threshold: 500, title: 'Quartermaster' },
+  { threshold: 700, title: 'Logistics Chief' },
+  { threshold: 900, title: 'Supply Marshal' },
+  { threshold: 1000, title: 'Legend' }
+];
+
+/** Get reputation title based on rep value */
+export function getReputationTitle(reputation: number): string {
+  for (let i = REPUTATION_TITLES.length - 1; i >= 0; i--) {
+    if (reputation >= REPUTATION_TITLES[i].threshold) {
+      return REPUTATION_TITLES[i].title;
+    }
+  }
+  return 'Unknown';
+}
+
 // ============================================================================
 // COMBAT UNITS
 // ============================================================================
@@ -291,6 +356,49 @@ export const TIER_LIMITS: Record<SubscriptionTier, {
 
 export type FactionRank = 'founder' | 'officer' | 'member';
 
+/** Permissions for each rank */
+export const FACTION_PERMISSIONS: Record<FactionRank, {
+  canInvite: boolean;
+  canKick: boolean;
+  canPromote: boolean;
+  canDemote: boolean;
+  canWithdraw: boolean;
+  canSetDoctrine: boolean;
+  canDeclareWar: boolean;
+  canUpgrade: boolean;
+}> = {
+  founder: {
+    canInvite: true,
+    canKick: true,
+    canPromote: true,
+    canDemote: true,
+    canWithdraw: true,
+    canSetDoctrine: true,
+    canDeclareWar: true,
+    canUpgrade: true
+  },
+  officer: {
+    canInvite: true,
+    canKick: true, // can kick members only, not officers
+    canPromote: false,
+    canDemote: false,
+    canWithdraw: true, // up to officer limit
+    canSetDoctrine: false,
+    canDeclareWar: false,
+    canUpgrade: false
+  },
+  member: {
+    canInvite: false,
+    canKick: false,
+    canPromote: false,
+    canDemote: false,
+    canWithdraw: false,
+    canSetDoctrine: false,
+    canDeclareWar: false,
+    canUpgrade: false
+  }
+};
+
 export interface FactionMember {
   playerId: string;
   rank: FactionRank;
@@ -337,6 +445,93 @@ export interface Faction {
 // INTEL
 // ============================================================================
 
+/** Intel freshness states based on age */
+export type IntelFreshness = 'fresh' | 'stale' | 'expired';
+
+/** Intel freshness thresholds (in ticks) */
+export const INTEL_DECAY_THRESHOLDS = {
+  fresh: 10,     // <10 ticks: full accuracy
+  stale: 50,     // 10-50 ticks: degraded accuracy
+  // >50 ticks: expired, major degradation
+} as const;
+
+/** Calculate intel freshness based on age */
+export function getIntelFreshness(gatheredAt: number, currentTick: number): IntelFreshness {
+  const age = currentTick - gatheredAt;
+  if (age < INTEL_DECAY_THRESHOLDS.fresh) return 'fresh';
+  if (age < INTEL_DECAY_THRESHOLDS.stale) return 'stale';
+  return 'expired';
+}
+
+/** Calculate effective signal quality with decay */
+export function getDecayedSignalQuality(
+  originalQuality: number,
+  gatheredAt: number,
+  currentTick: number
+): number {
+  const freshness = getIntelFreshness(gatheredAt, currentTick);
+
+  switch (freshness) {
+    case 'fresh':
+      return originalQuality;
+    case 'stale':
+      // Lose 1% per tick after fresh threshold
+      const staleAge = currentTick - gatheredAt - INTEL_DECAY_THRESHOLDS.fresh;
+      return Math.max(50, originalQuality - staleAge);
+    case 'expired':
+      // Minimum 20% quality for expired intel
+      return Math.max(20, originalQuality * 0.3);
+  }
+}
+
+/** Apply decay to intel data based on freshness */
+export function applyIntelDecay(
+  data: Record<string, unknown>,
+  freshness: IntelFreshness
+): Record<string, unknown> {
+  if (freshness === 'fresh') {
+    return { ...data };
+  }
+
+  const decayed = { ...data };
+
+  if (freshness === 'stale') {
+    // For stale intel, add uncertainty to numeric values
+    for (const [key, value] of Object.entries(decayed)) {
+      if (typeof value === 'number' && key !== 'distance') {
+        // Add ±10% noise to numbers
+        const variance = Math.round(value * 0.1);
+        decayed[key] = value + (Math.random() > 0.5 ? variance : -variance);
+      }
+    }
+    decayed._stale = true;
+    decayed._warning = 'Intel is stale. Values may be inaccurate.';
+  }
+
+  if (freshness === 'expired') {
+    // For expired intel, heavily degrade or remove sensitive data
+    const sensitiveKeys = ['raiderStrength', 'raiderPresence', 'activeShipments',
+                          'suStockpile', 'supplyLevel', 'marketActivity'];
+
+    for (const key of sensitiveKeys) {
+      if (key in decayed) {
+        if (typeof decayed[key] === 'number') {
+          // Replace with "unknown" range
+          const originalValue = decayed[key] as number;
+          decayed[key] = `~${Math.round(originalValue * 0.5)}-${Math.round(originalValue * 1.5)}`;
+        } else if (typeof decayed[key] === 'boolean') {
+          decayed[key] = 'unknown';
+        }
+      }
+    }
+
+    decayed._expired = true;
+    decayed._warning = 'Intel is expired. Data is unreliable and should be refreshed.';
+  }
+
+  return decayed;
+}
+
 export interface IntelReport {
   id: string;
   playerId: string;
@@ -356,6 +551,13 @@ export interface IntelReport {
 
   /** Signal quality when gathered (0-100) */
   signalQuality: number;
+}
+
+/** Intel report with freshness information */
+export interface IntelReportWithFreshness extends IntelReport {
+  freshness: IntelFreshness;
+  effectiveSignalQuality: number;
+  ageInTicks: number;
 }
 
 // ============================================================================
@@ -403,7 +605,7 @@ export interface Trade {
 // CONTRACTS
 // ============================================================================
 
-export type ContractType = 'haul' | 'produce' | 'scout' | 'escort';
+export type ContractType = 'haul' | 'supply' | 'scout';
 
 export interface Contract {
   id: string;
@@ -419,23 +621,18 @@ export interface Contract {
 
   /** Contract details (varies by type) */
   details: {
-    // Haul
+    // Haul: deliver cargo from A to B
     fromZoneId?: string;
     toZoneId?: string;
-    cargo?: Partial<Inventory>;
+    resource?: Resource;
+    quantity?: number;
 
-    // Produce
-    zoneId?: string;
-    produceResource?: Resource | 'su';
-    produceQuantity?: number;
+    // Supply: deliver SU to a zone
+    // uses toZoneId and quantity
 
-    // Scout
+    // Scout: gather fresh intel on a target
     targetId?: string;
     targetType?: 'zone' | 'route';
-    durationTicks?: number;
-
-    // Escort
-    shipmentId?: string;
   };
 
   /** Deadline (tick) */
@@ -497,6 +694,62 @@ export interface GameEvent {
 
   /** Event-specific data */
   data: Record<string, unknown>;
+}
+
+// ============================================================================
+// SEASONS
+// ============================================================================
+
+/** Season configuration */
+export const SEASON_CONFIG = {
+  ticksPerWeek: 1008,        // 7 days * 144 ticks/day
+  weeksPerSeason: 4,         // 4 weeks per season
+  ticksPerSeason: 4032,      // 4 weeks * 1008 ticks
+
+  // Scoring weights
+  scoring: {
+    zonesControlled: 100,     // per zone at season end
+    supplyDelivered: 1,       // per SU delivered
+    shipmentsCompleted: 10,   // per successful delivery
+    contractsCompleted: 25,   // per contract completed
+    reputationGained: 2,      // per reputation point gained
+    combatVictories: 50,      // per successful defense/raid
+  }
+} as const;
+
+/** Season score entry */
+export interface SeasonScore {
+  id: string;
+  seasonNumber: number;
+  entityId: string;           // player or faction ID
+  entityType: 'player' | 'faction';
+  entityName: string;
+
+  // Score components
+  zonesControlled: number;
+  supplyDelivered: number;
+  shipmentsCompleted: number;
+  contractsCompleted: number;
+  reputationGained: number;
+  combatVictories: number;
+
+  // Calculated total
+  totalScore: number;
+
+  // Ranking
+  rank?: number;
+}
+
+/** Calculate total score from components */
+export function calculateSeasonScore(score: Omit<SeasonScore, 'id' | 'totalScore' | 'rank'>): number {
+  return (
+    score.zonesControlled * SEASON_CONFIG.scoring.zonesControlled +
+    score.supplyDelivered * SEASON_CONFIG.scoring.supplyDelivered +
+    score.shipmentsCompleted * SEASON_CONFIG.scoring.shipmentsCompleted +
+    score.contractsCompleted * SEASON_CONFIG.scoring.contractsCompleted +
+    score.reputationGained * SEASON_CONFIG.scoring.reputationGained +
+    score.combatVictories * SEASON_CONFIG.scoring.combatVictories
+  );
 }
 
 // ============================================================================
