@@ -145,6 +145,23 @@ Reputation unlocks licenses and earns you titles. Earn it through gameplay:
 | Shipment intercepted | -10 |
 | Fail a contract | -20 |
 
+### Zone Efficiency
+Well-supplied zones gain battlefield bonuses. Supply states:
+
+| State | Condition | Effects |
+|-------|-----------|---------|
+| Fortified | 100% supply + 50-tick streak | +50% raid resist, +50% capture defense, +10% production |
+| Supplied | 100% supply | Baseline |
+| Strained | 50-99% supply | -25% raid resist, -25% capture defense |
+| Critical | 1-49% supply | -50% raid resist, -75% capture defense |
+| Collapsed | 0% supply | No defense — zone becomes capturable |
+
+**Stockpiles** boost zone defense further:
+- **Medkits**: Deposit to zone → boosts escort strength in combat (up to +50%). Decays 1 per 10 ticks.
+- **Comms**: Deposit to zone → degrades enemy scan quality (up to -50%). Decays 1 per 20 ticks.
+
+Compliance streaks (consecutive ticks at 100% supply) grant additional bonuses at 50, 200, and 500 ticks.
+
 ### Seasons
 The game runs in seasons (4 weeks each). Earn points through:
 - Controlling zones (100 pts/zone/week)
@@ -153,6 +170,8 @@ The game runs in seasons (4 weeks each). Earn points through:
 - Delivering supplies (1 pt per SU)
 - Winning combat (50 pts per victory)
 - Gaining reputation (2 pts per rep point)
+
+**Season reset**: When a season ends, scores are archived. Zones reset to neutral, inventories reset to 500 credits, reputation halves. Accounts, licenses, and faction identities persist.
 
 ## MCP Tools Reference
 
@@ -196,6 +215,8 @@ The game runs in seasons (4 weeks each). Earn points through:
 |------|-------------|
 | `burnrate_supply` | Deposit Supply Units to zone |
 | `burnrate_capture` | Capture neutral/collapsed zone |
+| `burnrate_stockpile` | Deposit medkits/comms to zone stockpile |
+| `burnrate_zone_efficiency` | View zone bonuses (raid resistance, production, etc.) |
 
 ### Factions
 | Tool | Description |
@@ -298,9 +319,9 @@ These prompts do basic data gathering and ask Claude for analysis. They're meant
 | rations | 3 grain + 1 fuel | Escorts, Supply Units |
 | textiles | 2 fiber + 1 chemicals | Medkits, parts |
 | ammo | 1 metal + 1 chemicals | Supply Units |
-| medkits | 1 chemicals + 1 textiles | *Currently tradeable only* |
+| medkits | 1 chemicals + 1 textiles | Zone stockpile (combat bonus) |
 | parts | 1 metal + 1 textiles | Units, Supply Units, comms |
-| comms | 1 metal + 1 chemicals + 1 parts | Raiders |
+| comms | 1 metal + 1 chemicals + 1 parts | Raiders, zone stockpile (intel defense) |
 
 ### Units
 | Unit | Inputs | Stats | Role |
