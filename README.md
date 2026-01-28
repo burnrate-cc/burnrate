@@ -43,41 +43,53 @@ The players who learn to work WITH Claude—analyzing intel, drafting doctrine, 
 
 ### 1. Install the MCP Server
 
+Create a dedicated directory for BURNRATE (don't install inside other projects):
+
 ```bash
-git clone <repo>
-cd burnrate
+mkdir ~/burnrate && cd ~/burnrate
+git clone https://github.com/burnrate-cc/burnrate.git .
 npm install
 npm run build
 ```
 
 ### 2. Configure Claude Code
 
-Add to your Claude Code MCP settings:
+Add to your Claude Code MCP settings (`~/.claude/settings.json`):
 
 ```json
 {
   "mcpServers": {
     "burnrate": {
       "command": "node",
-      "args": ["/path/to/burnrate/dist/mcp/server.js"],
+      "args": ["/Users/YOU/burnrate/dist/mcp/server.js"],
       "env": {
-        "BURNRATE_API_URL": "https://your-game-server.com",
-        "BURNRATE_API_KEY": "your-api-key-here"
+        "BURNRATE_API_URL": "https://api.burnrate.cc"
       }
     }
   }
 }
 ```
 
+> **Note**: No API key needed yet—you'll get one when you join.
+
 ### 3. Join the Game
 
-In Claude Code, use the MCP tools:
+In Claude Code, ask Claude to join the game:
 
 ```
 Use burnrate_join to create a character named "YourName"
 ```
 
-Save your API key! You'll need it to authenticate in future sessions.
+You'll receive an API key. **Save it!** Then update your MCP settings to include it:
+
+```json
+"env": {
+  "BURNRATE_API_URL": "https://api.burnrate.cc",
+  "BURNRATE_API_KEY": "your-key-here"
+}
+```
+
+Restart Claude Code to apply the new settings.
 
 ### 4. Start Playing
 
@@ -112,6 +124,19 @@ Intelligence gathered through scanning decays over time:
 - **Fresh** (<10 ticks) - Full accuracy
 - **Stale** (10-50 ticks) - Reduced signal quality, some data obscured
 - **Expired** (>50 ticks) - Unreliable, most data unavailable
+
+### Reputation
+
+Reputation unlocks licenses and earns you titles. Earn it through gameplay:
+
+| Action | Rep Change |
+|--------|------------|
+| Deliver a shipment | +5 |
+| Complete a contract | +10 |
+| Deliver supply to zone | +2 |
+| Capture a zone | +25 |
+| Shipment intercepted | -10 |
+| Fail a contract | -20 |
 
 ### Seasons
 The game runs in seasons (4 weeks each). Earn points through:
@@ -226,46 +251,64 @@ Access these as read-only data sources:
 | `burnrate://reputation` | Reputation progress |
 | `burnrate://licenses` | License status |
 
-## MCP Prompts
+## Building Your Edge
 
-Pre-built analysis templates:
+The game provides basic tools. Your competitive advantage comes from what you build on top.
 
-| Prompt | Description |
-|--------|-------------|
-| `situation_analysis` | Analyze current state and suggest priorities |
-| `route_planning` | Find safe and profitable shipping routes |
-| `threat_assessment` | Assess threats using available intel |
-| `trade_opportunities` | Find profitable market trades |
-| `mission_briefing` | Get briefing for extraction/production/shipping/capture/contract |
-| `faction_strategy` | Analyze faction position and strategy |
-| `season_progress` | Review performance and improvement suggestions |
+### MCP Prompts (Starting Points)
+
+These built-in prompts are intentionally simple—templates to get you started:
+
+| Prompt | What it does |
+|--------|--------------|
+| `situation_analysis` | Pulls your status, shipments, units, and intel; asks Claude to suggest priorities |
+| `route_planning` | Gathers route and zone data; asks for safe/profitable route recommendations |
+| `threat_assessment` | Filters intel for a target; asks for threat level analysis |
+| `trade_opportunities` | Pulls market orders; asks for arbitrage opportunities |
+| `mission_briefing` | Provides context for a mission type; asks for execution plan |
+| `faction_strategy` | Gathers faction and territory data; asks for strategic recommendations |
+| `season_progress` | Pulls leaderboard and score; asks how to climb rankings |
+
+These prompts do basic data gathering and ask Claude for analysis. They're meant to be **outgrown**. The real game is building better versions.
+
+### Ideas for Custom Tools
+
+- **Pathfinder** - Only direct routes are shown. Build multi-hop optimization.
+- **Market Scanner** - Spot arbitrage opportunities across zones, track price history.
+- **Supply Chain Optimizer** - Automate extraction → production → delivery pipelines.
+- **Intel Aggregator** - Track zone states over time, predict collapses before they happen.
+- **Risk Analyzer** - Model raider activity patterns, calculate route safety scores.
+- **Faction Coordinator** - Orchestrate multi-player logistics, assign zones to members.
+- **Contract Optimizer** - Find contracts that align with routes you're already running.
 
 ## Production Recipes
 
 ### Resources
-| Output | Inputs | Location |
-|--------|--------|----------|
-| metal | 2 ore + 1 fuel | Factory |
-| chemicals | 1 ore + 2 fuel | Factory |
-| rations | 3 grain + 1 fuel | Factory |
-| textiles | 2 fiber + 1 chemicals | Factory |
-| ammo | 1 metal + 1 chemicals | Factory |
-| medkits | 1 chemicals + 1 textiles | Factory |
-| parts | 1 metal + 1 textiles | Factory |
-| comms | 1 metal + 1 chemicals + 1 parts | Factory |
+| Output | Inputs | Purpose |
+|--------|--------|---------|
+| metal | 2 ore + 1 fuel | Units, parts, ammo, comms |
+| chemicals | 1 ore + 2 fuel | Rations, textiles, ammo, comms |
+| rations | 3 grain + 1 fuel | Escorts, Supply Units |
+| textiles | 2 fiber + 1 chemicals | Medkits, parts |
+| ammo | 1 metal + 1 chemicals | Supply Units |
+| medkits | 1 chemicals + 1 textiles | *Currently tradeable only* |
+| parts | 1 metal + 1 textiles | Units, Supply Units, comms |
+| comms | 1 metal + 1 chemicals + 1 parts | Raiders |
 
 ### Units
-| Unit | Inputs | Stats |
-|------|--------|-------|
-| escort | 2 metal + 1 parts + 1 rations | str:10, maint:5/tick |
-| raider | 2 metal + 2 parts + 1 comms | str:15, maint:8/tick |
+| Unit | Inputs | Stats | Role |
+|------|--------|-------|------|
+| escort | 2 metal + 1 parts + 1 rations | str:10, maint:5/tick | Protect shipments |
+| raider | 2 metal + 2 parts + 1 comms | str:15, maint:8/tick | Interdict routes |
 
 ### Supply Units
 | Output | Inputs |
 |--------|--------|
 | 1 SU | 2 rations + 1 fuel + 1 parts + 1 ammo |
 
-## Shipment Licenses
+## Progression
+
+### Shipment Licenses
 
 | License | Rep Required | Cost | Capacity |
 |---------|--------------|------|----------|
@@ -273,7 +316,7 @@ Pre-built analysis templates:
 | Freight | 50 | 500cr | Medium cargo |
 | Convoy | 200 | 2000cr | Heavy armored |
 
-## Reputation Titles
+### Reputation Titles
 
 | Reputation | Title |
 |------------|-------|
@@ -286,7 +329,7 @@ Pre-built analysis templates:
 | 750+ | Master |
 | 1000 | Legend |
 
-## Subscription Tiers
+### Subscription Tiers
 
 | Tier | Actions/Day | Market Orders | Contracts | Event History |
 |------|-------------|---------------|-----------|---------------|
@@ -294,9 +337,16 @@ Pre-built analysis templates:
 | Operator | 500 | 20 | 10 | 10,000 |
 | Command | 1000 | 50 | 25 | 100,000 |
 
-## Running Your Own Server
+## Self-Hosting (Optional)
 
-### Development
+Most players connect to the official server. Run your own if you want to:
+
+- **Test strategies** without affecting your main account
+- **Develop custom tools** with fast ticks (1 second instead of 10 minutes)
+- **Host a private server** for your group
+- **Contribute** to the game's development
+
+### Running Locally
 
 ```bash
 # Build
@@ -308,8 +358,8 @@ npm run server
 # Start with fast ticks for testing (1 second)
 npm run server:fast
 
-# Check server status
-node dist/cli/index.js server status
+# Initialize the world (first time only)
+curl -X POST http://localhost:3000/admin/init-world -H "X-Admin-Key: your-admin-key"
 ```
 
 ### Environment Variables
@@ -317,25 +367,15 @@ node dist/cli/index.js server status
 ```bash
 # API Server
 PORT=3000                    # Server port
-TURSO_URL=file:game.db      # Turso database URL
-TURSO_AUTH_TOKEN=           # Turso auth token (for remote)
+TURSO_URL=file:game.db      # Database (local file or Turso URL)
+TURSO_AUTH_TOKEN=           # Turso auth token (for remote DB)
 TICK_INTERVAL=600000        # Tick interval in ms (10 min default)
+ADMIN_KEY=your-secret       # Admin API key
 
-# MCP Server (client-side)
+# MCP Server (point to your local server)
 BURNRATE_API_URL=http://localhost:3000
 BURNRATE_API_KEY=your-api-key
 ```
-
-## Building Your Own Tools
-
-The game intentionally provides minimal tooling. Build your competitive advantage:
-
-- **Pathfinder** - Only direct routes are shown. Build multi-hop optimization.
-- **Market Scanner** - Spot arbitrage opportunities across zones.
-- **Supply Chain Optimizer** - Automate extraction → production → delivery.
-- **Intel Aggregator** - Track zone states over time, predict collapses.
-- **Risk Analyzer** - Model raider activity, route safety.
-- **Faction Coordinator** - Orchestrate multi-player logistics.
 
 ## License
 
