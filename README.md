@@ -99,6 +99,8 @@ Use burnrate_view to see the world map
 Use burnrate_routes to see where I can travel
 ```
 
+New players start with a 5-step tutorial that teaches core mechanics. Use `burnrate_tutorial` to see your progress, or ask Claude to use the `game_overview` prompt for a full walkthrough.
+
 ## Core Concepts
 
 ### The Burn
@@ -172,6 +174,25 @@ The game runs in seasons (4 weeks each). Earn points through:
 - Gaining reputation (2 pts per rep point)
 
 **Season reset**: When a season ends, scores are archived. Zones reset to neutral, inventories reset to 500 credits, reputation halves. Accounts, licenses, and faction identities persist.
+
+### Doctrines
+Factions can create strategy documents stored server-side. Officers and founders write doctrines to coordinate members — convoy rules, zone defense protocols, market strategies. Visible to all faction members.
+
+### Advanced Market Orders
+Beyond basic buy/sell orders, higher tiers unlock automation:
+- **Conditional Orders** (Operator+) — Trigger when a resource price crosses a threshold. "Buy ore if price drops below 10."
+- **Time-Weighted Orders** (Command) — Drip-feed large orders across ticks to avoid moving the market. "Sell 1000 metal over 50 ticks."
+
+### Webhooks
+Operator+ players can register HTTPS webhooks to receive real-time notifications for game events — shipment arrivals, zone collapses, combat results. Webhooks auto-disable after 5 consecutive failures.
+
+### Data Export & Batch Operations
+- **Export** (`burnrate_export`) — Bulk download of all your game data: player info, units, shipments, contracts, intel, and event history.
+- **Batch** (`burnrate_batch`) — Execute up to 10 game actions in a single call. Each action is still individually rate-limited.
+
+### Faction Analytics
+- **Analytics** (Operator+, officer+) — Member activity, zone control summary, and resource flow tracking from audit logs.
+- **Audit Logs** (Command) — Full history of all faction member actions for accountability and coordination.
 
 ## MCP Tools Reference
 
@@ -251,6 +272,8 @@ The game runs in seasons (4 weeks each). Earn points through:
 | `burnrate_licenses` | License status and requirements |
 | `burnrate_license_unlock` | Unlock freight or convoy license |
 | `burnrate_events` | Your event history |
+| `burnrate_tutorial` | View tutorial progress and current step |
+| `burnrate_tutorial_complete` | Complete a tutorial step and receive rewards |
 
 ### Seasons & Leaderboards
 | Tool | Description |
@@ -258,6 +281,40 @@ The game runs in seasons (4 weeks each). Earn points through:
 | `burnrate_season` | Current season info |
 | `burnrate_leaderboard` | Season rankings |
 | `burnrate_season_score` | Your season score |
+
+### Doctrines
+| Tool | Description |
+|------|-------------|
+| `burnrate_doctrines` | View faction strategy documents |
+| `burnrate_doctrine_create` | Create a new doctrine (officer+) |
+| `burnrate_doctrine_update` | Update an existing doctrine (officer+) |
+| `burnrate_doctrine_delete` | Delete a doctrine (officer+) |
+
+### Advanced Market Orders
+| Tool | Description |
+|------|-------------|
+| `burnrate_market_conditional` | Conditional order — triggers on price threshold (Operator+) |
+| `burnrate_market_twap` | Time-weighted order — drip-feeds quantity per tick (Command) |
+
+### Webhooks & Automation
+| Tool | Description |
+|------|-------------|
+| `burnrate_webhooks` | List your registered webhooks |
+| `burnrate_webhook_register` | Register a webhook for game events (Operator+) |
+| `burnrate_webhook_delete` | Delete a webhook |
+| `burnrate_export` | Export all your game data |
+| `burnrate_batch` | Execute multiple actions in one call (max 10) |
+
+### Faction Analytics
+| Tool | Description |
+|------|-------------|
+| `burnrate_faction_analytics` | Member activity, zone control, resource flows (Operator+) |
+| `burnrate_faction_audit` | Full audit logs of faction actions (Command) |
+
+### Account
+| Tool | Description |
+|------|-------------|
+| `burnrate_subscription` | View your subscription tier and limits |
 
 ## MCP Resources
 
@@ -296,6 +353,7 @@ These built-in prompts are intentionally simple—templates to get you started:
 | `mission_briefing` | Provides context for a mission type; asks for execution plan |
 | `faction_strategy` | Gathers faction and territory data; asks for strategic recommendations |
 | `season_progress` | Pulls leaderboard and score; asks how to climb rankings |
+| `game_overview` | Teaches game mechanics to new players; walks through getting started |
 
 These prompts do basic data gathering and ask Claude for analysis. They're meant to be **outgrown**. The real game is building better versions.
 
