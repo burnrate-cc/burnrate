@@ -1,3 +1,5 @@
+<!-- PRs should target the `dev` branch, not `main`. -->
+
 ## Summary
 Brief description of what this PR does.
 
