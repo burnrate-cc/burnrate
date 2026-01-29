@@ -20,11 +20,13 @@ Have an idea? [Open a feature request](https://github.com/burnrate-cc/burnrate/i
 
 ### Submit Code
 1. Fork the repo
-2. Create a branch (`git checkout -b feature/your-feature`)
+2. Create a branch **from `dev`** (`git checkout dev && git checkout -b feature/your-feature`)
 3. Make your changes
 4. Test locally (`npm run build && npm run start`)
 5. Commit with a clear message
-6. Push and open a PR
+6. Push and open a PR **targeting `dev`** (not `main`)
+
+> **Branch rules:** `main` is production and only accepts PRs from `dev`. All contributor PRs should target `dev`.
 
 ## Development Setup
 
@@ -33,17 +35,23 @@ Have an idea? [Open a feature request](https://github.com/burnrate-cc/burnrate/i
 git clone https://github.com/YOUR_USERNAME/burnrate.git
 cd burnrate
 
+# Start from the dev branch
+git checkout dev
+
 # Install dependencies
 npm install
 
 # Build
 npm run build
 
-# Run CLI
-npm run start
+# Start API server
+npm run server
 
-# Run tick server (for testing)
+# Start tick server (for testing with fast ticks)
 npm run server:fast
+
+# Initialize world (first time only)
+curl -X POST http://localhost:3000/admin/init-world -H "X-Admin-Key: $ADMIN_KEY"
 ```
 
 ## Code Style
