@@ -54,10 +54,20 @@ export const ProduceSchema = z.object({
   quantity: z.number().int().min(1, 'Quantity must be at least 1').max(100, 'Quantity cannot exceed 100')
 });
 
-export const CargoSchema = z.record(
-  ResourceSchema,
-  z.number().int().min(0).max(10000)
-).refine(
+export const CargoSchema = z.object({
+  ore: z.number().int().min(0).max(10000).default(0),
+  fuel: z.number().int().min(0).max(10000).default(0),
+  grain: z.number().int().min(0).max(10000).default(0),
+  fiber: z.number().int().min(0).max(10000).default(0),
+  metal: z.number().int().min(0).max(10000).default(0),
+  chemicals: z.number().int().min(0).max(10000).default(0),
+  rations: z.number().int().min(0).max(10000).default(0),
+  textiles: z.number().int().min(0).max(10000).default(0),
+  ammo: z.number().int().min(0).max(10000).default(0),
+  medkits: z.number().int().min(0).max(10000).default(0),
+  parts: z.number().int().min(0).max(10000).default(0),
+  comms: z.number().int().min(0).max(10000).default(0),
+}).refine(
   (cargo) => Object.values(cargo).some(v => v > 0),
   'Cargo must contain at least one resource'
 );
