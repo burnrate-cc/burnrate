@@ -50,7 +50,10 @@ class GameAPIClient {
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || `API error: ${response.status}`);
+      const errMsg = typeof data.error === 'string'
+        ? data.error
+        : data.error?.message || `API error: ${response.status}`;
+      throw new Error(errMsg);
     }
 
     return data;
