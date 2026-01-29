@@ -5,11 +5,18 @@
  * The front doesn't feed itself.
  */
 
-// Route 'setup' command BEFORE any heavy imports.
+// Route lightweight commands BEFORE any heavy imports.
 // ESM resolves all static imports before executing code, so we must
-// dynamic-import setup and exit before static imports would load better-sqlite3.
+// dynamic-import and exit before static imports would load better-sqlite3.
 if (process.argv[2] === 'setup') {
   await import('./setup.js');
+  process.exit(0);
+}
+
+if (process.argv[2] === 'mcp') {
+  await import('../mcp/server.js');
+  // MCP server runs indefinitely via stdio, so this line is only
+  // reached if the server exits on its own
   process.exit(0);
 }
 

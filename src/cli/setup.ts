@@ -83,24 +83,26 @@ async function main() {
     }
   }
 
-  // 5. Find MCP server path
-  // When installed via npm, the MCP server is in the package's dist/ folder
-  // When running from source, it's relative to this file
-  let mcpServerPath: string;
-
-  // Check if we're running from an npm install (dist/cli/setup.js)
+  // 5. Determine MCP server config
+  // Detect whether we're running from source (git clone) or npx
   const distPath = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', 'mcp', 'server.js');
-  if (fs.existsSync(distPath)) {
-    mcpServerPath = distPath;
-  } else {
-    // Fallback: ask the user
-    mcpServerPath = await ask(
-      'Path to MCP server (dist/mcp/server.js)',
-      path.join(process.cwd(), 'dist', 'mcp', 'server.js')
-    );
-  }
+  const isFromSource = !distPath.includes('node_modules');
 
-  console.log(`\nMCP server path: ${mcpServerPath}`);
+  let mcpCommand: string;
+  let mcpArgs: string[];
+
+  if (isFromSource && fs.existsSync(distPath)) {
+    // Running from cloned source — use direct path
+    mcpCommand = 'node';
+    mcpArgs = [distPath];
+    console.log(`\nMCP server: ${distPath} (source)`);
+  } else {
+    // Installed via npx/npm — use npx to resolve package at runtime
+    // This is stable and doesn't depend on ephemeral npx cache paths
+    mcpCommand = 'npx';
+    mcpArgs = ['-y', 'burnrate', 'mcp'];
+    console.log(`\nMCP server: npx burnrate mcp (npm package)`);
+  }
 
   // 6. Write Claude Code settings
   const claudeSettingsDir = path.join(os.homedir(), '.claude');
@@ -127,8 +129,8 @@ async function main() {
   }
 
   settings.mcpServers.burnrate = {
-    command: 'node',
-    args: [mcpServerPath],
+    command: mcpCommand,
+    args: mcpArgs,
     env
   };
 
