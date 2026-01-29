@@ -160,8 +160,10 @@ async function main() {
   rl.close();
 }
 
-export const setupComplete = main().catch((err) => {
+try {
+  await main();
+} catch (err) {
   console.error('Setup failed:', err);
   rl.close();
   process.exit(1);
-});
+}

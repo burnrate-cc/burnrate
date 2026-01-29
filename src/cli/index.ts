@@ -7,8 +7,9 @@
 
 // Route 'setup' command to the setup script before loading heavy dependencies
 if (process.argv[2] === 'setup') {
-  const { setupComplete } = await import('./setup.js');
-  await setupComplete;
+  // setup.ts uses top-level await, so this import won't resolve
+  // until the entire setup wizard completes
+  await import('./setup.js');
   process.exit(0);
 }
 

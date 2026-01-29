@@ -1,6 +1,6 @@
 {
   "name": "burnrate",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "A logistics war MMO for Claude Code. The front doesn't feed itself.",
   "type": "module",
   "main": "dist/cli/index.js",
