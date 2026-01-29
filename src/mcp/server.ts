@@ -2116,4 +2116,9 @@ async function main() {
   console.error('BURNRATE MCP Server running');
 }
 
-main().catch(console.error);
+try {
+  await main();
+} catch (err) {
+  console.error(err);
+  process.exit(1);
+}
