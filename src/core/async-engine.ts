@@ -11,7 +11,7 @@ import {
   RECIPES, getFieldResource, IntelReportWithFreshness, ContractType,
   FactionRank, FACTION_PERMISSIONS, Faction, ShipmentType, LICENSE_REQUIREMENTS,
   REPUTATION_REWARDS, getReputationTitle, SEASON_CONFIG, SeasonScore,
-  TUTORIAL_CONTRACTS
+  TUTORIAL_CONTRACTS, ZONE_INCOME, getStreakMultiplier
 } from './types.js';
 
 export class AsyncGameEngine {
@@ -68,7 +68,28 @@ export class AsyncGameEngine {
       if (season.seasonWeek < SEASON_CONFIG.weeksPerSeason) {
         await this.db.advanceWeek();
       } else {
-        // End of season - archive scores and reset the world
+        // End of season - tally zone control scores with streak multipliers, then reset
+        const zones = await this.db.getAllZones();
+        for (const zone of zones) {
+          if (!zone.ownerId) continue;
+          const multiplier = getStreakMultiplier(zone.complianceStreak);
+          const zonePoints = Math.floor(multiplier);
+          // Award zonesControlled score (multiplied by streak) to the owning faction
+          await this.db.incrementSeasonScore(
+            season.seasonNumber, zone.ownerId, 'faction',
+            (await this.db.getFaction(zone.ownerId))?.name || 'Unknown',
+            'zonesControlled', zonePoints
+          );
+
+          events.push(await this.recordEvent('season_zone_scored', zone.ownerId, 'faction', {
+            zoneName: zone.name,
+            zoneType: zone.type,
+            complianceStreak: zone.complianceStreak,
+            streakMultiplier: multiplier,
+            pointsAwarded: zonePoints * SEASON_CONFIG.scoring.zonesControlled
+          }));
+        }
+
         const newSeasonNumber = season.seasonNumber + 1;
         await this.db.seasonReset(newSeasonNumber);
         events.push(await this.recordEvent('tick', null, 'system', {
@@ -150,7 +171,44 @@ export class AsyncGameEngine {
       }
     }
 
+    // Distribute credit income from owned zones to faction members
+    await this.distributeZoneIncome(zones, events);
+
     return events;
+  }
+
+  private async distributeZoneIncome(zones: Zone[], events: GameEvent[]): Promise<void> {
+    // Aggregate income per faction
+    const factionIncome = new Map<string, number>();
+    for (const zone of zones) {
+      if (!zone.ownerId) continue;
+      const income = ZONE_INCOME[zone.type];
+      if (income <= 0) continue;
+      factionIncome.set(zone.ownerId, (factionIncome.get(zone.ownerId) || 0) + income);
+    }
+
+    // Distribute to faction members
+    for (const [factionId, totalIncome] of factionIncome) {
+      const faction = await this.db.getFaction(factionId);
+      if (!faction || faction.members.length === 0) continue;
+
+      const perMember = Math.floor(totalIncome / faction.members.length);
+      if (perMember <= 0) continue;
+
+      for (const member of faction.members) {
+        const player = await this.db.getPlayer(member.playerId);
+        if (!player) continue;
+        const newInventory = { ...player.inventory, credits: player.inventory.credits + perMember };
+        await this.db.updatePlayer(player.id, { inventory: newInventory });
+      }
+
+      events.push(await this.recordEvent('zone_income', factionId, 'faction', {
+        factionName: faction.name,
+        totalIncome,
+        perMember,
+        memberCount: faction.members.length
+      }));
+    }
   }
 
   // ============================================================================

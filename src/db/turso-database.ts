@@ -1291,13 +1291,14 @@ export class TursoDatabase {
     entityId: string,
     entityType: 'player' | 'faction',
     entityName: string,
-    field: 'supplyDelivered' | 'shipmentsCompleted' | 'contractsCompleted' | 'reputationGained' | 'combatVictories',
+    field: 'zonesControlled' | 'supplyDelivered' | 'shipmentsCompleted' | 'contractsCompleted' | 'reputationGained' | 'combatVictories',
     amount: number
   ): Promise<void> {
     // Ensure record exists
     await this.getOrCreateSeasonScore(seasonNumber, entityId, entityType, entityName);
 
     const fieldMap: Record<string, string> = {
+      zonesControlled: 'zones_controlled',
       supplyDelivered: 'supply_delivered',
       shipmentsCompleted: 'shipments_completed',
       contractsCompleted: 'contracts_completed',

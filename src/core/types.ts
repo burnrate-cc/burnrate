@@ -228,6 +228,26 @@ export const BURN_RATES: Record<ZoneType, number> = {
   stronghold: 20
 };
 
+/** Credits generated per tick for each owned zone type (split among faction members) */
+export const ZONE_INCOME: Record<ZoneType, number> = {
+  hub: 0,          // Hubs are neutral
+  factory: 10,
+  field: 5,
+  junction: 0,     // Junctions are transit only
+  front: 25,
+  stronghold: 50
+};
+
+/** Compliance streak multiplier for season-end zone scoring.
+ *  Zones held at full supply for longer streaks are worth more. */
+export function getStreakMultiplier(complianceStreak: number): number {
+  if (complianceStreak >= 100) return 3.0;
+  if (complianceStreak >= 50) return 2.0;
+  if (complianceStreak >= 20) return 1.5;
+  if (complianceStreak >= 5) return 1.2;
+  return 1.0;
+}
+
 // ============================================================================
 // ROUTES
 // ============================================================================
@@ -814,7 +834,9 @@ export type GameEventType =
   | 'stockpile_deposited'
   | 'tutorial_completed'
   | 'doctrine_updated'
-  | 'webhook_triggered';
+  | 'webhook_triggered'
+  | 'zone_income'
+  | 'season_zone_scored';
 
 export interface GameEvent {
   id: string;
