@@ -1,11 +1,12 @@
 {
   "name": "burnrate",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "A logistics war MMO for Claude Code. The front doesn't feed itself.",
   "type": "module",
   "main": "dist/cli/index.js",
   "bin": {
-    "burnrate": "./dist/cli/index.js"
+    "burnrate": "./dist/cli/index.js",
+    "burnrate-setup": "./dist/cli/setup.js"
   },
   "files": [
     "dist/",
