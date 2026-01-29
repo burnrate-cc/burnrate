@@ -75,10 +75,10 @@ export const RECIPES: Record<string, { inputs: Partial<Record<Resource, number>>
 
 /** What raw resource a Field produces based on its name */
 export function getFieldResource(fieldName: string): RawResource | null {
-  if (fieldName.includes('Ore')) return 'ore';
-  if (fieldName.includes('Fuel')) return 'fuel';
-  if (fieldName.includes('Grain')) return 'grain';
-  if (fieldName.includes('Fiber')) return 'fiber';
+  if (fieldName.includes('Mine') || fieldName.includes('Ore')) return 'ore';
+  if (fieldName.includes('Refinery') || fieldName.includes('Fuel')) return 'fuel';
+  if (fieldName.includes('Farm') || fieldName.includes('Grain')) return 'grain';
+  if (fieldName.includes('Grove') || fieldName.includes('Fiber')) return 'fiber';
   return null;
 }
 
