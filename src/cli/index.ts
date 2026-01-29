@@ -7,7 +7,8 @@
 
 // Route 'setup' command to the setup script before loading heavy dependencies
 if (process.argv[2] === 'setup') {
-  await import('./setup.js');
+  const { setupComplete } = await import('./setup.js');
+  await setupComplete;
   process.exit(0);
 }
 
