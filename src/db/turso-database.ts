@@ -497,18 +497,25 @@ export class TursoDatabase {
 
   async getRoutesBetween(fromZoneId: string, toZoneId: string): Promise<Route[]> {
     const result = await this.client.execute({
-      sql: 'SELECT * FROM routes WHERE from_zone_id = ? AND to_zone_id = ?',
-      args: [fromZoneId, toZoneId]
+      sql: 'SELECT * FROM routes WHERE (from_zone_id = ? AND to_zone_id = ?) OR (from_zone_id = ? AND to_zone_id = ?)',
+      args: [fromZoneId, toZoneId, toZoneId, fromZoneId]
     });
     return result.rows.map(row => this.rowToRoute(row));
   }
 
   async getRoutesFromZone(zoneId: string): Promise<Route[]> {
     const result = await this.client.execute({
-      sql: 'SELECT * FROM routes WHERE from_zone_id = ?',
-      args: [zoneId]
+      sql: 'SELECT * FROM routes WHERE from_zone_id = ? OR to_zone_id = ?',
+      args: [zoneId, zoneId]
     });
-    return result.rows.map(row => this.rowToRoute(row));
+    // Normalize: always make the queried zone the "from" side
+    return result.rows.map(row => {
+      const route = this.rowToRoute(row);
+      if (route.toZoneId === zoneId) {
+        return { ...route, fromZoneId: route.toZoneId, toZoneId: route.fromZoneId };
+      }
+      return route;
+    });
   }
 
   async getAllRoutes(): Promise<Route[]> {
