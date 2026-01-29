@@ -83,8 +83,8 @@ async function main() {
     }
   }
 
-  // 5. Determine MCP server config
-  // Detect whether we're running from source (git clone) or npx
+  // 5. Determine MCP server command
+  // Detect whether we're running from source (git clone) or npm install
   const distPath = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', 'mcp', 'server.js');
   const isFromSource = !distPath.includes('node_modules');
 
@@ -92,34 +92,31 @@ async function main() {
   let mcpArgs: string[];
 
   if (isFromSource && fs.existsSync(distPath)) {
-    // Running from cloned source — use direct path
+    // Running from cloned source — use direct node path
     mcpCommand = 'node';
     mcpArgs = [distPath];
     console.log(`\nMCP server: ${distPath} (source)`);
   } else {
-    // Installed via npx/npm — use npx to resolve package at runtime
-    // This is stable and doesn't depend on ephemeral npx cache paths
-    mcpCommand = 'npx';
-    mcpArgs = ['-y', 'burnrate', 'mcp'];
-    console.log(`\nMCP server: npx burnrate mcp (npm package)`);
-  }
-
-  // 6. Write Claude Code settings
-  const claudeSettingsDir = path.join(os.homedir(), '.claude');
-  const claudeSettingsPath = path.join(claudeSettingsDir, 'settings.json');
-
-  let settings: any = {};
-  if (fs.existsSync(claudeSettingsPath)) {
-    try {
-      settings = JSON.parse(fs.readFileSync(claudeSettingsPath, 'utf-8'));
-    } catch {
-      console.log('  ⚠ Could not parse existing settings.json, creating new one.');
+    // Installed via npx/npm — find the global or local node + server path
+    // Using absolute paths is most reliable for MCP servers
+    const nodePath = process.execPath; // absolute path to current node binary
+    // Resolve the server.js path relative to this setup script
+    const serverPath = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', 'mcp', 'server.js');
+    if (fs.existsSync(serverPath)) {
+      mcpCommand = nodePath;
+      mcpArgs = [serverPath];
+      console.log(`\nMCP server: ${serverPath}`);
+    } else {
+      // Fallback: use npx
+      mcpCommand = 'npx';
+      mcpArgs = ['-y', 'burnrate', 'mcp'];
+      console.log(`\nMCP server: npx burnrate mcp (npm package)`);
     }
   }
 
-  if (!settings.mcpServers) {
-    settings.mcpServers = {};
-  }
+  // 6. Write .mcp.json in the current directory
+  // Claude Code reads MCP server config from .mcp.json at the project level
+  const mcpConfigPath = path.join(process.cwd(), '.mcp.json');
 
   const env: Record<string, string> = {
     BURNRATE_API_URL: apiUrl
@@ -128,19 +125,19 @@ async function main() {
     env.BURNRATE_API_KEY = apiKey;
   }
 
-  settings.mcpServers.burnrate = {
-    command: mcpCommand,
-    args: mcpArgs,
-    env
+  const mcpConfig: any = {
+    mcpServers: {
+      burnrate: {
+        type: 'stdio',
+        command: mcpCommand,
+        args: mcpArgs,
+        env
+      }
+    }
   };
 
-  // Ensure directory exists
-  if (!fs.existsSync(claudeSettingsDir)) {
-    fs.mkdirSync(claudeSettingsDir, { recursive: true });
-  }
-
-  fs.writeFileSync(claudeSettingsPath, JSON.stringify(settings, null, 2));
-  console.log(`\n✓ Claude Code MCP settings written to ${claudeSettingsPath}`);
+  fs.writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2) + '\n');
+  console.log(`\n✓ MCP config written to ${mcpConfigPath}`);
 
   // 7. Summary
   console.log(`
@@ -148,7 +145,8 @@ async function main() {
 ║                     SETUP COMPLETE                           ║
 ╠══════════════════════════════════════════════════════════════╣
 ║                                                              ║
-║  Restart Claude Code to load the MCP server.                 ║
+║  Start Claude Code from this directory:                      ║
+║    claude                                                    ║
 ║                                                              ║
 ║  Then ask Claude:                                            ║
 ║    "Use burnrate_join to create a character named MyName"    ║

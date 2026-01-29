@@ -41,21 +41,23 @@ The players who learn to work WITH Claude—analyzing intel, optimizing routes, 
 
 ## Quick Start
 
-**One command to set up, then you're in.**
+**Create a directory, run setup, start playing.**
 
 ```bash
+mkdir burnrate && cd burnrate
 npx burnrate setup
+claude
 ```
 
-The setup wizard connects to the live server, auto-configures your Claude Code MCP settings, and verifies the connection.
+The setup wizard connects to the live server, writes a `.mcp.json` config in the current directory, and verifies the connection. Then start Claude Code from that directory.
 
-**Restart Claude Code**, then tell Claude:
+Tell Claude:
 
 ```
 Use burnrate_join to create a character named "YourName"
 ```
 
-You'll get an API key. Run `npx burnrate setup` again and paste it in, or manually add `"BURNRATE_API_KEY": "your-key"` to the env block in `~/.claude/settings.json`. Restart Claude Code one more time, and you're set.
+You'll get an API key. Run `npx burnrate setup` again and paste it in, or manually add `"BURNRATE_API_KEY": "your-key"` to the env block in `.mcp.json`. Restart Claude Code and you're set.
 
 ### Setup from Source (Alternative)
 
@@ -69,14 +71,15 @@ npm run setup
 
 ### Manual Config (Alternative)
 
-Add this directly to `~/.claude/settings.json`:
+Create a `.mcp.json` file in any directory you'll run Claude Code from:
 
 ```json
 {
   "mcpServers": {
     "burnrate": {
+      "type": "stdio",
       "command": "npx",
-      "args": ["-y", "burnrate", "start"],
+      "args": ["-y", "burnrate", "mcp"],
       "env": {
         "BURNRATE_API_URL": "https://burnrate-api-server-production.up.railway.app",
         "BURNRATE_API_KEY": "your-key-here"
