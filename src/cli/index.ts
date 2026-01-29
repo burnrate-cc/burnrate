@@ -5,23 +5,25 @@
  * The front doesn't feed itself.
  */
 
-// Route 'setup' command to the setup script before loading heavy dependencies
+// Route 'setup' command BEFORE any heavy imports.
+// ESM resolves all static imports before executing code, so we must
+// dynamic-import setup and exit before static imports would load better-sqlite3.
 if (process.argv[2] === 'setup') {
-  // setup.ts uses top-level await, so this import won't resolve
-  // until the entire setup wizard completes
   await import('./setup.js');
   process.exit(0);
 }
 
-import { Command } from 'commander';
-import { GameDatabase } from '../db/database.js';
-import { GameEngine } from '../core/engine.js';
-import { generateWorld, seedMarkets } from '../core/worldgen.js';
-import { formatView, formatZone, formatRoutes, formatMarket, formatShipments, formatEvents, formatHelp } from './format.js';
-import { getSupplyState, TIER_LIMITS, SHIPMENT_SPECS, Resource } from '../core/types.js';
-import path from 'path';
-import os from 'os';
-import fs from 'fs';
+// Heavy imports — only reached when NOT running setup
+const { Command } = await import('commander');
+const { GameDatabase } = await import('../db/database.js');
+const { GameEngine } = await import('../core/engine.js');
+const { generateWorld, seedMarkets } = await import('../core/worldgen.js');
+const { formatView, formatZone, formatRoutes, formatMarket, formatShipments, formatEvents, formatHelp } = await import('./format.js');
+const { getSupplyState, TIER_LIMITS, SHIPMENT_SPECS } = await import('../core/types.js');
+type Resource = import('../core/types.js').Resource;
+const path = await import('path');
+const os = await import('os');
+const fs = await import('fs');
 
 // Database path
 const DB_DIR = path.join(os.homedir(), '.burnrate');
