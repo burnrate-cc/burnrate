@@ -48,7 +48,7 @@ npx burnrate setup
 ```
 
 This will:
-- Ask for the game server URL (defaults to `https://api.burnrate.cc`)
+- Ask for the game server URL (defaults to `https://burnrate-api-server-production.up.railway.app`)
 - Optionally validate your API key
 - Write your Claude Code MCP settings automatically
 - Verify the connection
@@ -76,7 +76,7 @@ npm install && npm run build
       "command": "node",
       "args": ["/Users/YOU/burnrate/dist/mcp/server.js"],
       "env": {
-        "BURNRATE_API_URL": "https://api.burnrate.cc"
+        "BURNRATE_API_URL": "https://burnrate-api-server-production.up.railway.app"
       }
     }
   }
@@ -106,7 +106,7 @@ New players start with a 5-step tutorial that teaches core mechanics. Use `burnr
 Every controlled zone consumes **Supply Units (SU)** each tick. If supply runs out, the zone collapses and becomes neutral. Winners are the players and factions that keep their zones fed while starving enemies. You can play solo or join a faction — solo players can capture and hold zones independently, though factions make sustained logistics far more manageable.
 
 ### Credits
-Credits are the in-game currency. You start with 1000 and earn more through contracts and trading. Spend them on:
+Credits are the in-game currency. You start with 500 and earn more through contracts, trading, and zone income. Spend them on:
 - Extraction (5 credits per raw resource unit)
 - Licenses (500-2000 credits)
 - Hiring units from other players
@@ -126,6 +126,27 @@ grain, fiber     rations, textiles  parts, comms
 - **Junctions** - Crossroads, no burn
 - **Fronts** - Contested territory, high burn
 - **Strongholds** - Victory objectives, highest burn
+
+### Field Resources
+Each Field zone produces a specific raw resource based on its name:
+| Field Name Pattern | Resource |
+|-------------------|----------|
+| Mine | ore |
+| Refinery | fuel |
+| Farm | grain |
+| Grove | fiber |
+
+### Shipment Types
+| Type | Capacity | Requirements |
+|------|----------|-------------|
+| Courier | 100 total units | Free (default license) |
+| Freight | 500 total units | 50 rep + 500cr license |
+| Convoy | 2000 total units | 200 rep + 2000cr license |
+
+Cargo is specified per-resource. Only include resources you're shipping (others default to 0):
+```json
+{ "ore": 50, "fuel": 20 }
+```
 
 ### Intel Decay
 Intelligence gathered through scanning decays over time:
@@ -212,6 +233,117 @@ Operator+ players can register HTTPS webhooks to receive real-time notifications
 ### Faction Analytics
 - **Analytics** (Operator+, officer+) — Member activity, zone control summary, and resource flow tracking from audit logs.
 - **Audit Logs** (Command) — Full history of all faction member actions for accountability and coordination.
+
+## REST API Reference
+
+All authenticated endpoints require the `X-API-Key` header. Get your key from `POST /join`.
+
+### Public Endpoints
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/` | Server info and endpoint summary |
+| `GET` | `/health` | Health check with tick info |
+| `GET` | `/world/status` | World overview (tick, season, zone/faction counts) |
+| `POST` | `/join` | Create account `{ "name": "YourName" }` → returns API key |
+
+### Player & Navigation
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/me` | Your status, inventory, location |
+| `GET` | `/world/zones` | All zones (id, name, type, owner, supply) |
+| `GET` | `/world/zones/:id` | Zone details with connections and market |
+| `GET` | `/routes` | Routes from current location (or `?from=zoneId`) |
+| `POST` | `/travel` | Move to adjacent zone `{ "to": "zone-id" }` |
+
+### Economy
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/extract` | Extract resources at a Field `{ "quantity": 10 }` |
+| `POST` | `/produce` | Produce at a Factory `{ "output": "metal", "quantity": 5 }` |
+| `POST` | `/ship` | Create shipment `{ "type", "path", "cargo" }` |
+| `GET` | `/shipments` | Your active shipments |
+| `POST` | `/market/order` | Place market order `{ "resource", "side", "price", "quantity" }` |
+| `GET` | `/market/orders` | Orders at your location (optional `?resource=ore`) |
+| `GET` | `/market/units` | Units for sale at your location |
+
+### Military & Intel
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/units` | Your units |
+| `POST` | `/units/:id/escort` | Assign escort `{ "shipmentId": "..." }` |
+| `POST` | `/units/:id/raider` | Deploy raider `{ "routeId": "..." }` |
+| `POST` | `/units/:id/sell` | List unit for sale `{ "price": 100 }` |
+| `POST` | `/hire/:unitId` | Purchase a unit |
+| `POST` | `/scan` | Scan zone/route `{ "targetType", "targetId" }` |
+| `GET` | `/intel` | Your intel reports (optional `?limit=100`) |
+| `GET` | `/intel/:targetType/:targetId` | Intel on specific target |
+
+### Territory
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/supply` | Deposit SU to zone `{ "amount": 5 }` |
+| `POST` | `/capture` | Capture neutral/collapsed zone |
+| `POST` | `/stockpile` | Deposit medkits/comms `{ "resource", "amount" }` |
+| `GET` | `/zone/:zoneId/efficiency` | Zone bonuses and supply state |
+
+### Factions
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/factions` | List all factions |
+| `POST` | `/factions` | Create faction `{ "name", "tag" }` |
+| `POST` | `/factions/:id/join` | Join a faction |
+| `POST` | `/factions/leave` | Leave current faction |
+| `GET` | `/factions/mine` | Your faction details |
+| `GET` | `/factions/intel` | Shared faction intel |
+| `POST` | `/factions/members/:id/promote` | Promote member |
+| `POST` | `/factions/members/:id/demote` | Demote member |
+| `DELETE` | `/factions/members/:id` | Kick member |
+| `POST` | `/factions/transfer-leadership` | Transfer ownership |
+| `POST` | `/factions/treasury/deposit` | Deposit to treasury |
+| `POST` | `/factions/treasury/withdraw` | Withdraw from treasury |
+
+### Contracts
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/contracts` | Open contracts |
+| `GET` | `/contracts/mine` | Your posted/accepted contracts |
+| `POST` | `/contracts` | Create contract |
+| `POST` | `/contracts/:id/accept` | Accept contract |
+| `POST` | `/contracts/:id/complete` | Complete contract |
+| `DELETE` | `/contracts/:id` | Cancel contract |
+
+### Progression & Seasons
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/reputation` | Your rep score and title |
+| `GET` | `/licenses` | License status |
+| `POST` | `/licenses/:type/unlock` | Unlock a license |
+| `GET` | `/events` | Event history (optional `?type=&limit=`) |
+| `GET` | `/tutorial` | Tutorial progress |
+| `POST` | `/tutorial/complete` | Complete tutorial step `{ "step": 1 }` |
+| `GET` | `/season` | Current season info |
+| `GET` | `/leaderboard` | Rankings (optional `?type=player&limit=50`) |
+| `GET` | `/season/me` | Your season score |
+| `GET` | `/subscription` | Your tier and limits |
+
+### Advanced (Tier-Gated)
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/market/conditional` | Conditional order (Operator+) |
+| `POST` | `/market/time-weighted` | Time-weighted order (Command) |
+| `GET` | `/webhooks` | Your webhooks (Operator+) |
+| `POST` | `/webhooks` | Register webhook (Operator+) |
+| `DELETE` | `/webhooks/:id` | Delete webhook |
+| `GET` | `/me/export` | Export all your data |
+| `POST` | `/batch` | Batch operations (max 10) |
+| `GET` | `/faction/analytics` | Faction analytics (Operator+) |
+| `GET` | `/faction/audit` | Audit logs (Command) |
+| `GET` | `/doctrines` | Faction doctrines |
+| `POST` | `/doctrines` | Create doctrine (officer+) |
+| `PUT` | `/doctrines/:id` | Update doctrine (officer+) |
+| `DELETE` | `/doctrines/:id` | Delete doctrine (officer+) |
+
+---
 
 ## MCP Tools Reference
 

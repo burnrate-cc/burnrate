@@ -13,7 +13,7 @@ import { generateWorldData, mapRouteNamesToIds } from '../core/async-worldgen.js
 import { Resource, Player, TIER_LIMITS } from '../core/types.js';
 import {
   GameError, AuthError, ValidationError, NotFoundError, RateLimitError,
-  errorResponse, validateBody, ErrorCodes
+  errorResponse, validateBody, ErrorCodes, ErrorCode
 } from './errors.js';
 import {
   JoinSchema, TravelSchema, ExtractSchema, ProduceSchema, ShipSchema,
@@ -81,6 +81,23 @@ const getPlayer = (c: Context): Player => c.get('player' as never) as Player;
 const getPlayerId = (c: Context): string => c.get('playerId' as never) as string;
 const getRequestId = (c: Context): string => c.get('requestId' as never) as string;
 
+// Convert engine result with code to proper GameError/RateLimitError
+function engineErrorToGameError(
+  result: { success: boolean; error?: string; code?: string },
+  fallbackCode: ErrorCode,
+  fallbackMsg: string
+): GameError {
+  const code = result.code as ErrorCode | undefined;
+  const msg = result.error || fallbackMsg;
+  if (code === ErrorCodes.TICK_RATE_LIMITED || code === ErrorCodes.DAILY_LIMIT_REACHED) {
+    return new RateLimitError(code, msg);
+  }
+  if (code === ErrorCodes.PLAYER_NOT_FOUND) {
+    return new NotFoundError('Player');
+  }
+  return new GameError(code || fallbackCode, msg);
+}
+
 // ============================================================================
 // PUBLIC ENDPOINTS (no auth required)
 // ============================================================================
@@ -90,14 +107,37 @@ app.get('/', (c) => {
     name: 'BURNRATE',
     tagline: 'The front doesn\'t feed itself.',
     version: '1.0.0',
-    docs: '/docs'
+    docs: 'https://github.com/burnrate-cc/burnrate#readme',
+    endpoints: {
+      health: 'GET /health',
+      join: 'POST /join { "name": "YourName" }',
+      status: 'GET /me',
+      world: 'GET /world/zones',
+      routes: 'GET /routes',
+      travel: 'POST /travel { "to": "zone-id" }',
+      extract: 'POST /extract { "quantity": 10 }',
+      produce: 'POST /produce { "output": "metal", "quantity": 5 }',
+      ship: 'POST /ship { "type": "courier", "path": [...], "cargo": {...} }',
+      market: 'POST /market/order, GET /market/orders',
+      units: 'GET /units',
+      intel: 'POST /scan, GET /intel',
+      factions: 'GET /factions, POST /factions',
+      contracts: 'GET /contracts, POST /contracts',
+      tutorial: 'GET /tutorial, POST /tutorial/complete'
+    }
   });
 });
 
 app.get('/health', async (c) => {
   try {
     const tick = await db.getCurrentTick();
-    return c.json({ status: 'ok', tick });
+    const tickIntervalMs = parseInt(process.env.TICK_INTERVAL || '600000');
+    return c.json({
+      status: 'ok',
+      tick,
+      tickIntervalMs,
+      tickIntervalSeconds: Math.round(tickIntervalMs / 1000)
+    });
   } catch (e) {
     return c.json({ status: 'error', error: String(e) }, 500);
   }
@@ -240,7 +280,7 @@ app.post('/travel', authMiddleware, writeRateLimitMiddleware(), async (c) => {
 
   const result = await engine.travel(playerId, to);
   if (!result.success) {
-    throw new GameError(ErrorCodes.NO_ROUTE, result.error || 'Travel failed');
+    throw engineErrorToGameError(result, ErrorCodes.NO_ROUTE, 'Travel failed');
   }
 
   const zone = await db.getZone(to);
@@ -258,7 +298,7 @@ app.post('/extract', authMiddleware, writeRateLimitMiddleware(), async (c) => {
 
   const result = await engine.extract(playerId, quantity);
   if (!result.success) {
-    throw new GameError(ErrorCodes.WRONG_ZONE_TYPE, result.error || 'Extraction failed');
+    throw engineErrorToGameError(result, ErrorCodes.WRONG_ZONE_TYPE, 'Extraction failed');
   }
 
   return c.json({ success: true, extracted: result.extracted });
@@ -271,7 +311,7 @@ app.post('/produce', authMiddleware, writeRateLimitMiddleware(), async (c) => {
 
   const result = await engine.produce(playerId, output, quantity);
   if (!result.success) {
-    throw new GameError(ErrorCodes.INSUFFICIENT_RESOURCES, result.error || 'Production failed');
+    throw engineErrorToGameError(result, ErrorCodes.INSUFFICIENT_RESOURCES, 'Production failed');
   }
 
   return c.json({
@@ -288,7 +328,7 @@ app.post('/ship', authMiddleware, writeRateLimitMiddleware(), async (c) => {
 
   const result = await engine.createShipmentWithPath(playerId, type, path, cargo as any);
   if (!result.success) {
-    throw new GameError(ErrorCodes.INSUFFICIENT_RESOURCES, result.error || 'Shipment failed');
+    throw engineErrorToGameError(result, ErrorCodes.INSUFFICIENT_RESOURCES, 'Shipment failed');
   }
 
   return c.json({ success: true, shipment: result.shipment });
@@ -322,7 +362,7 @@ app.post('/market/order', authMiddleware, writeRateLimitMiddleware(), async (c) 
 
   const result = await engine.placeOrder(playerId, player.locationId, resource as Resource, side, price, quantity);
   if (!result.success) {
-    throw new GameError(ErrorCodes.INSUFFICIENT_RESOURCES, result.error || 'Order failed');
+    throw engineErrorToGameError(result, ErrorCodes.INSUFFICIENT_RESOURCES, 'Order failed');
   }
 
   return c.json({ success: true, order: result.order });
@@ -370,7 +410,7 @@ app.post('/supply', authMiddleware, writeRateLimitMiddleware(), async (c) => {
 
   const result = await engine.depositSU(playerId, player.locationId, amount);
   if (!result.success) {
-    throw new GameError(ErrorCodes.INSUFFICIENT_RESOURCES, result.error || 'Supply failed');
+    throw engineErrorToGameError(result, ErrorCodes.INSUFFICIENT_RESOURCES, 'Supply failed');
   }
 
   return c.json({ success: true });
@@ -411,7 +451,7 @@ app.post('/stockpile', authMiddleware, writeRateLimitMiddleware(), async (c) => 
 
   const result = await engine.depositStockpile(playerId, player.locationId, resource, amount);
   if (!result.success) {
-    throw new GameError(ErrorCodes.INSUFFICIENT_RESOURCES, result.error || 'Stockpile deposit failed');
+    throw engineErrorToGameError(result, ErrorCodes.INSUFFICIENT_RESOURCES, 'Stockpile deposit failed');
   }
 
   return c.json({ success: true });
@@ -562,7 +602,7 @@ app.post('/factions', authMiddleware, writeRateLimitMiddleware(), async (c) => {
 
   const result = await engine.createFaction(playerId, name, tag);
   if (!result.success) {
-    throw new GameError(ErrorCodes.ALREADY_IN_FACTION, result.error || 'Faction creation failed');
+    throw engineErrorToGameError(result, ErrorCodes.ALREADY_IN_FACTION, 'Faction creation failed');
   }
 
   return c.json({ success: true, faction: result.faction });

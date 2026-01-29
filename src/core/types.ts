@@ -722,8 +722,8 @@ export type ContractType = 'haul' | 'supply' | 'scout' | 'tutorial';
 export const TUTORIAL_CONTRACTS = [
   {
     step: 1,
-    title: 'First Haul',
-    description: 'Buy 20 ore at the Hub market and deliver it to an adjacent Factory. This teaches market buying, inventory management, and basic shipping.',
+    title: 'First Extraction',
+    description: 'Travel to a Field zone and extract 10 raw resources. This teaches navigation, zone types, and resource extraction.',
     type: 'tutorial' as ContractType,
     reward: { credits: 100, reputation: 5 }
   },

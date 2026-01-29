@@ -588,19 +588,19 @@ export class AsyncGameEngine {
   // PLAYER ACTIONS
   // ============================================================================
 
-  async canPlayerAct(playerId: string): Promise<{ allowed: boolean; reason?: string }> {
+  async canPlayerAct(playerId: string): Promise<{ allowed: boolean; reason?: string; code?: string }> {
     const player = await this.db.getPlayer(playerId);
-    if (!player) return { allowed: false, reason: 'Player not found' };
+    if (!player) return { allowed: false, reason: 'Player not found', code: 'PLAYER_NOT_FOUND' };
 
     const tick = await this.db.getCurrentTick();
     const limits = TIER_LIMITS[player.tier];
 
     if (player.actionsToday >= limits.dailyActions) {
-      return { allowed: false, reason: `Daily action limit (${limits.dailyActions}) reached` };
+      return { allowed: false, reason: `Daily action limit (${limits.dailyActions}) reached`, code: 'DAILY_LIMIT_REACHED' };
     }
 
     if (player.lastActionTick >= tick) {
-      return { allowed: false, reason: 'Rate limited. Wait for next tick.' };
+      return { allowed: false, reason: 'Rate limited. Wait for next tick.', code: 'TICK_RATE_LIMITED' };
     }
 
     return { allowed: true };
@@ -622,9 +622,9 @@ export class AsyncGameEngine {
     type: 'courier' | 'freight' | 'convoy',
     path: string[],
     cargo: Partial<Inventory>
-  ): Promise<{ success: boolean; shipment?: Shipment; error?: string }> {
+  ): Promise<{ success: boolean; shipment?: Shipment; error?: string; code?: string }> {
     const canAct = await this.canPlayerAct(playerId);
-    if (!canAct.allowed) return { success: false, error: canAct.reason };
+    if (!canAct.allowed) return { success: false, error: canAct.reason, code: canAct.code };
 
     const player = await this.db.getPlayer(playerId);
     if (!player) return { success: false, error: 'Player not found' };
@@ -709,9 +709,9 @@ export class AsyncGameEngine {
     side: 'buy' | 'sell',
     price: number,
     quantity: number
-  ): Promise<{ success: boolean; order?: MarketOrder; error?: string }> {
+  ): Promise<{ success: boolean; order?: MarketOrder; error?: string; code?: string }> {
     const canAct = await this.canPlayerAct(playerId);
-    if (!canAct.allowed) return { success: false, error: canAct.reason };
+    if (!canAct.allowed) return { success: false, error: canAct.reason, code: canAct.code };
 
     const player = await this.db.getPlayer(playerId);
     if (!player) return { success: false, error: 'Player not found' };
@@ -816,9 +816,9 @@ export class AsyncGameEngine {
     });
   }
 
-  async depositSU(playerId: string, zoneId: string, amount: number): Promise<{ success: boolean; error?: string }> {
+  async depositSU(playerId: string, zoneId: string, amount: number): Promise<{ success: boolean; error?: string; code?: string }> {
     const canAct = await this.canPlayerAct(playerId);
-    if (!canAct.allowed) return { success: false, error: canAct.reason };
+    if (!canAct.allowed) return { success: false, error: canAct.reason, code: canAct.code };
 
     const player = await this.db.getPlayer(playerId);
     if (!player) return { success: false, error: 'Player not found' };
@@ -868,9 +868,9 @@ export class AsyncGameEngine {
     zoneId: string,
     resource: 'medkits' | 'comms',
     amount: number
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; error?: string; code?: string }> {
     const canAct = await this.canPlayerAct(playerId);
-    if (!canAct.allowed) return { success: false, error: canAct.reason };
+    if (!canAct.allowed) return { success: false, error: canAct.reason, code: canAct.code };
 
     const player = await this.db.getPlayer(playerId);
     if (!player) return { success: false, error: 'Player not found' };
@@ -927,9 +927,9 @@ export class AsyncGameEngine {
     return { success: true, efficiency };
   }
 
-  async scan(playerId: string, targetType: 'zone' | 'route', targetId: string): Promise<{ success: boolean; intel?: any; error?: string }> {
+  async scan(playerId: string, targetType: 'zone' | 'route', targetId: string): Promise<{ success: boolean; intel?: any; error?: string; code?: string }> {
     const canAct = await this.canPlayerAct(playerId);
-    if (!canAct.allowed) return { success: false, error: canAct.reason };
+    if (!canAct.allowed) return { success: false, error: canAct.reason, code: canAct.code };
 
     const player = await this.db.getPlayer(playerId);
     if (!player) return { success: false, error: 'Player not found' };
@@ -1027,9 +1027,9 @@ export class AsyncGameEngine {
     playerId: string,
     output: string,
     quantity: number
-  ): Promise<{ success: boolean; produced?: number; units?: Unit[]; error?: string }> {
+  ): Promise<{ success: boolean; produced?: number; units?: Unit[]; error?: string; code?: string }> {
     const canAct = await this.canPlayerAct(playerId);
-    if (!canAct.allowed) return { success: false, error: canAct.reason };
+    if (!canAct.allowed) return { success: false, error: canAct.reason, code: canAct.code };
 
     const player = await this.db.getPlayer(playerId);
     if (!player) return { success: false, error: 'Player not found' };
@@ -1118,9 +1118,9 @@ export class AsyncGameEngine {
   async extract(
     playerId: string,
     quantity: number
-  ): Promise<{ success: boolean; extracted?: { resource: string; amount: number }; error?: string }> {
+  ): Promise<{ success: boolean; extracted?: { resource: string; amount: number }; error?: string; code?: string }> {
     const canAct = await this.canPlayerAct(playerId);
-    if (!canAct.allowed) return { success: false, error: canAct.reason };
+    if (!canAct.allowed) return { success: false, error: canAct.reason, code: canAct.code };
 
     const player = await this.db.getPlayer(playerId);
     if (!player) return { success: false, error: 'Player not found' };
@@ -1167,9 +1167,9 @@ export class AsyncGameEngine {
     return { success: true, extracted: { resource, amount: quantity } };
   }
 
-  async captureZone(playerId: string, zoneId: string): Promise<{ success: boolean; error?: string }> {
+  async captureZone(playerId: string, zoneId: string): Promise<{ success: boolean; error?: string; code?: string }> {
     const canAct = await this.canPlayerAct(playerId);
-    if (!canAct.allowed) return { success: false, error: canAct.reason };
+    if (!canAct.allowed) return { success: false, error: canAct.reason, code: canAct.code };
 
     const player = await this.db.getPlayer(playerId);
     if (!player) return { success: false, error: 'Player not found' };
@@ -1299,9 +1299,9 @@ export class AsyncGameEngine {
     return { success: true };
   }
 
-  async hireUnit(playerId: string, unitId: string): Promise<{ success: boolean; unit?: Unit; error?: string }> {
+  async hireUnit(playerId: string, unitId: string): Promise<{ success: boolean; unit?: Unit; error?: string; code?: string }> {
     const canAct = await this.canPlayerAct(playerId);
-    if (!canAct.allowed) return { success: false, error: canAct.reason };
+    if (!canAct.allowed) return { success: false, error: canAct.reason, code: canAct.code };
 
     const player = await this.db.getPlayer(playerId);
     if (!player) return { success: false, error: 'Player not found' };
@@ -2324,9 +2324,9 @@ export class AsyncGameEngine {
   // TRAVEL
   // ============================================================================
 
-  async travel(playerId: string, toZoneId: string): Promise<{ success: boolean; error?: string }> {
+  async travel(playerId: string, toZoneId: string): Promise<{ success: boolean; error?: string; code?: string }> {
     const canAct = await this.canPlayerAct(playerId);
-    if (!canAct.allowed) return { success: false, error: canAct.reason };
+    if (!canAct.allowed) return { success: false, error: canAct.reason, code: canAct.code };
 
     const player = await this.db.getPlayer(playerId);
     if (!player) return { success: false, error: 'Player not found' };
