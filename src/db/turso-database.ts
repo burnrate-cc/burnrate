@@ -351,6 +351,22 @@ export class TursoDatabase {
       `CREATE INDEX IF NOT EXISTS idx_audit_logs_faction ON audit_logs(faction_id)`,
       `CREATE INDEX IF NOT EXISTS idx_audit_logs_tick ON audit_logs(tick)`,
 
+      // Tier 1: Critical indexes for tick processing
+      `CREATE INDEX IF NOT EXISTS idx_shipments_status ON shipments(status)`,
+      `CREATE INDEX IF NOT EXISTS idx_units_player_id ON units(player_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_units_assignment_id ON units(assignment_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_routes_from_zone ON routes(from_zone_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_market_orders_zone ON market_orders(zone_id, resource, side, price)`,
+      `CREATE INDEX IF NOT EXISTS idx_contracts_status ON contracts(status, created_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_shipments_player_id ON shipments(player_id)`,
+
+      // Tier 2: High priority indexes for queries
+      `CREATE INDEX IF NOT EXISTS idx_zones_owner_id ON zones(owner_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_intel_player_gathered ON intel(player_id, gathered_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_intel_target ON intel(target_type, target_id, gathered_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_contracts_poster ON contracts(poster_id, created_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_contracts_accepted ON contracts(accepted_by, created_at)`,
+
       // Initialize world state
       `INSERT OR IGNORE INTO world (id, current_tick, season_number, season_week) VALUES (1, 0, 1, 1)`,
     ];
@@ -818,6 +834,15 @@ export class TursoDatabase {
       sql: 'SELECT * FROM units WHERE location_id = ? AND for_sale_price IS NOT NULL',
       args: [zoneId]
     });
+    return result.rows.map(row => this.rowToUnit(row));
+  }
+
+  async getUnitsByAssignment(assignmentId: string, type?: string): Promise<Unit[]> {
+    const sql = type
+      ? 'SELECT * FROM units WHERE assignment_id = ? AND type = ?'
+      : 'SELECT * FROM units WHERE assignment_id = ?';
+    const args = type ? [assignmentId, type] : [assignmentId];
+    const result = await this.client.execute({ sql, args });
     return result.rows.map(row => this.rowToUnit(row));
   }
 

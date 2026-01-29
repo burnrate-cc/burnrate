@@ -285,19 +285,7 @@ export class AsyncGameEngine {
   }
 
   private async getRaidersOnRoute(routeId: string): Promise<Unit[]> {
-    const allPlayers = await this.db.getAllPlayers();
-    const raiders: Unit[] = [];
-
-    for (const player of allPlayers) {
-      const units = await this.db.getPlayerUnits(player.id);
-      for (const unit of units) {
-        if (unit.type === 'raider' && unit.assignmentId === routeId) {
-          raiders.push(unit);
-        }
-      }
-    }
-
-    return raiders;
+    return this.db.getUnitsByAssignment(routeId, 'raider');
   }
 
   private async interceptShipment(shipment: Shipment, tick: number, events: GameEvent[]): Promise<void> {
