@@ -103,7 +103,7 @@ New players start with a 5-step tutorial that teaches core mechanics. Use `burnr
 ## Core Concepts
 
 ### The Burn
-Every controlled zone consumes **Supply Units (SU)** each tick. If supply runs out, the zone collapses and becomes neutral. Winners are the factions that keep their zones fed while starving enemies.
+Every controlled zone consumes **Supply Units (SU)** each tick. If supply runs out, the zone collapses and becomes neutral. Winners are the players and factions that keep their zones fed while starving enemies. You can play solo or join a faction — solo players can capture and hold zones independently, though factions make sustained logistics far more manageable.
 
 ### Credits
 Credits are the in-game currency. You start with 1000 and earn more through contracts and trading. Spend them on:
@@ -161,11 +161,31 @@ Well-supplied zones gain battlefield bonuses. Supply states:
 - **Medkits**: Deposit to zone → boosts escort strength in combat (up to +50%). Decays 1 per 10 ticks.
 - **Comms**: Deposit to zone → degrades enemy scan quality (up to -50%). Decays 1 per 20 ticks.
 
-Compliance streaks (consecutive ticks at 100% supply) grant additional bonuses at 50, 200, and 500 ticks.
+**Compliance streaks** (consecutive ticks at full supply) multiply a zone's season-end score value:
+
+| Streak | Multiplier |
+|--------|-----------|
+| 0-4 ticks | 1.0x |
+| 5-19 ticks | 1.2x |
+| 20-49 ticks | 1.5x |
+| 50-99 ticks | 2.0x |
+| 100+ ticks | 3.0x |
+
+### Zone Income
+Owned zones generate **credits per tick** distributed to the owner (solo player) or split among faction members:
+
+| Zone Type | Credits/tick |
+|-----------|-------------|
+| Field | 5 |
+| Factory | 10 |
+| Front | 25 |
+| Stronghold | 50 |
+
+This rewards sustained territory control — hoarding until season end is suboptimal compared to capturing and holding zones early.
 
 ### Seasons
 The game runs in seasons (4 weeks each). Earn points through:
-- Controlling zones (100 pts/zone/week)
+- Controlling zones at season end (100 pts/zone, multiplied by compliance streak)
 - Completing shipments (10 pts each)
 - Fulfilling contracts (25 pts each)
 - Delivering supplies (1 pt per SU)
