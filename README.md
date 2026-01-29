@@ -41,54 +41,50 @@ The players who learn to work WITH Claude—analyzing intel, optimizing routes, 
 
 ## Quick Start
 
-### Option A: Automated Setup (Recommended)
+**One command to set up, then you're in.**
 
 ```bash
 npx burnrate setup
 ```
 
-This will:
-- Ask for the game server URL (defaults to `https://burnrate-api-server-production.up.railway.app`)
-- Optionally validate your API key
-- Write your Claude Code MCP settings automatically
-- Verify the connection
+The setup wizard connects to the live server, auto-configures your Claude Code MCP settings, and verifies the connection.
 
-Restart Claude Code after setup, then ask Claude to join:
+**Restart Claude Code**, then tell Claude:
 
 ```
 Use burnrate_join to create a character named "YourName"
 ```
 
-### Option B: Manual Setup
+You'll get an API key. Run `npx burnrate setup` again and paste it in, or manually add `"BURNRATE_API_KEY": "your-key"` to the env block in `~/.claude/settings.json`. Restart Claude Code one more time, and you're set.
 
-1. Clone and build:
+### Setup from Source (Alternative)
+
+If you want to contribute or run a local server:
+
 ```bash
-mkdir ~/burnrate && cd ~/burnrate
-git clone https://github.com/burnrate-cc/burnrate.git .
-npm install && npm run build
+git clone https://github.com/burnrate-cc/burnrate.git ~/burnrate
+cd ~/burnrate && npm install && npm run build
+npm run setup
 ```
 
-2. Add to your Claude Code MCP settings (`~/.claude/settings.json`):
+### Manual Config (Alternative)
+
+Add this directly to `~/.claude/settings.json`:
+
 ```json
 {
   "mcpServers": {
     "burnrate": {
-      "command": "node",
-      "args": ["/Users/YOU/burnrate/dist/mcp/server.js"],
+      "command": "npx",
+      "args": ["-y", "burnrate", "start"],
       "env": {
-        "BURNRATE_API_URL": "https://burnrate-api-server-production.up.railway.app"
+        "BURNRATE_API_URL": "https://burnrate-api-server-production.up.railway.app",
+        "BURNRATE_API_KEY": "your-key-here"
       }
     }
   }
 }
 ```
-
-3. Restart Claude Code and join:
-```
-Use burnrate_join to create a character named "YourName"
-```
-
-You'll receive an API key. **Save it!** Then add `"BURNRATE_API_KEY": "your-key-here"` to your env config and restart Claude Code.
 
 ### Start Playing
 
