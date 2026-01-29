@@ -181,7 +181,8 @@ app.post('/join', async (c) => {
     message: `Welcome to BURNRATE, ${name}! Save your API key - you'll need it for all requests.`,
     apiKey: player.apiKey,
     playerId: player.id,
-    location: hub.name
+    location: hub.name,
+    nextStep: 'Ask Claude: "Use burnrate_tutorial to start the tutorial" — it will walk you through the basics and earn you credits.'
   });
 });
 
