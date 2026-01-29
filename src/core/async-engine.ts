@@ -167,7 +167,7 @@ export class AsyncGameEngine {
       if (newTicks <= 0) {
         const newPosition = shipment.currentPosition + 1;
 
-        if (newPosition >= shipment.path.length) {
+        if (newPosition >= shipment.path.length - 1) {
           await this.completeShipment(shipment, tick, events);
         } else {
           const fromZoneId = shipment.path[shipment.currentPosition];
