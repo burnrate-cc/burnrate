@@ -36,7 +36,7 @@ async function main() {
   // 1. Get API URL
   const apiUrl = await ask(
     'API server URL',
-    'https://api.burnrate.cc'
+    'https://burnrate-api-server-production.up.railway.app'
   );
 
   // 2. Get API key (optional — can join later)
