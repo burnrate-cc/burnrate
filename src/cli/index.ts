@@ -15,9 +15,10 @@ if (process.argv[2] === 'setup') {
 
 if (process.argv[2] === 'mcp') {
   await import('../mcp/server.js');
-  // MCP server runs indefinitely via stdio, so this line is only
-  // reached if the server exits on its own
-  process.exit(0);
+  // server.connect() resolves immediately after setting up the transport,
+  // so we block here to prevent fallthrough to heavy imports.
+  // Node exits naturally when the MCP client closes stdin.
+  await new Promise(() => {});
 }
 
 // Heavy imports — only reached when NOT running setup
