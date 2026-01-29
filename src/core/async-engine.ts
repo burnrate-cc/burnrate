@@ -178,36 +178,48 @@ export class AsyncGameEngine {
   }
 
   private async distributeZoneIncome(zones: Zone[], events: GameEvent[]): Promise<void> {
-    // Aggregate income per faction
-    const factionIncome = new Map<string, number>();
+    // Aggregate income per owner (faction or solo player)
+    const ownerIncome = new Map<string, number>();
     for (const zone of zones) {
       if (!zone.ownerId) continue;
       const income = ZONE_INCOME[zone.type];
       if (income <= 0) continue;
-      factionIncome.set(zone.ownerId, (factionIncome.get(zone.ownerId) || 0) + income);
+      ownerIncome.set(zone.ownerId, (ownerIncome.get(zone.ownerId) || 0) + income);
     }
 
-    // Distribute to faction members
-    for (const [factionId, totalIncome] of factionIncome) {
-      const faction = await this.db.getFaction(factionId);
-      if (!faction || faction.members.length === 0) continue;
+    // Distribute income — check if owner is a faction or a solo player
+    for (const [ownerId, totalIncome] of ownerIncome) {
+      const faction = await this.db.getFaction(ownerId);
+      if (faction && faction.members.length > 0) {
+        // Faction-owned: split among members
+        const perMember = Math.floor(totalIncome / faction.members.length);
+        if (perMember <= 0) continue;
 
-      const perMember = Math.floor(totalIncome / faction.members.length);
-      if (perMember <= 0) continue;
+        for (const member of faction.members) {
+          const player = await this.db.getPlayer(member.playerId);
+          if (!player) continue;
+          const newInventory = { ...player.inventory, credits: player.inventory.credits + perMember };
+          await this.db.updatePlayer(player.id, { inventory: newInventory });
+        }
 
-      for (const member of faction.members) {
-        const player = await this.db.getPlayer(member.playerId);
+        events.push(await this.recordEvent('zone_income', ownerId, 'faction', {
+          factionName: faction.name,
+          totalIncome,
+          perMember,
+          memberCount: faction.members.length
+        }));
+      } else {
+        // Solo player-owned: full income to the player
+        const player = await this.db.getPlayer(ownerId);
         if (!player) continue;
-        const newInventory = { ...player.inventory, credits: player.inventory.credits + perMember };
+        const newInventory = { ...player.inventory, credits: player.inventory.credits + totalIncome };
         await this.db.updatePlayer(player.id, { inventory: newInventory });
-      }
 
-      events.push(await this.recordEvent('zone_income', factionId, 'faction', {
-        factionName: faction.name,
-        totalIncome,
-        perMember,
-        memberCount: faction.members.length
-      }));
+        events.push(await this.recordEvent('zone_income', ownerId, 'player', {
+          playerName: player.name,
+          totalIncome
+        }));
+      }
     }
   }
 
@@ -1162,10 +1174,6 @@ export class AsyncGameEngine {
     const player = await this.db.getPlayer(playerId);
     if (!player) return { success: false, error: 'Player not found' };
 
-    if (!player.factionId) {
-      return { success: false, error: 'Must be in a faction to capture zones' };
-    }
-
     const zone = await this.db.getZone(zoneId);
     if (!zone) return { success: false, error: 'Zone not found' };
 
@@ -1173,9 +1181,12 @@ export class AsyncGameEngine {
       return { success: false, error: 'Must be at the zone to capture it' };
     }
 
+    // Owner is faction if in one, otherwise the player directly
+    const newOwnerId = player.factionId || player.id;
+
     if (zone.ownerId) {
-      if (zone.ownerId === player.factionId) {
-        return { success: false, error: 'Zone already controlled by your faction' };
+      if (zone.ownerId === newOwnerId) {
+        return { success: false, error: 'Zone already controlled by you' };
       }
 
       // Front efficiency: capture defense check
@@ -1191,7 +1202,7 @@ export class AsyncGameEngine {
     }
 
     await this.db.updateZone(zoneId, {
-      ownerId: player.factionId,
+      ownerId: newOwnerId,
       supplyLevel: 0,
       complianceStreak: 0,
       medkitStockpile: 0,
@@ -1200,11 +1211,13 @@ export class AsyncGameEngine {
 
     await this.recordPlayerAction(playerId);
 
-    await this.recordEvent('zone_captured', player.factionId, 'faction', {
+    const actorType = player.factionId ? 'faction' as const : 'player' as const;
+    const actorId = player.factionId || player.id;
+    await this.recordEvent('zone_captured', actorId, actorType, {
       zoneId,
       zoneName: zone.name,
       previousOwner: zone.ownerId,
-      newOwner: player.factionId,
+      newOwner: newOwnerId,
       capturedBy: playerId
     });
 
