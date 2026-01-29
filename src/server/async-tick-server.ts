@@ -26,11 +26,21 @@ async function main() {
   const currentTick = await db.getCurrentTick();
   console.log(`[TICK SERVER] Starting at tick ${currentTick}`);
 
+  // Minimum interval guard: skip tick if one was processed less than half the interval ago.
+  // This prevents double-processing during rolling deploys when two instances overlap.
+  const minIntervalSeconds = Math.floor(TICK_INTERVAL / 1000 / 2);
+
   async function processTick() {
     const startTime = Date.now();
 
     try {
-      const result = await engine.processTick();
+      const result = await engine.tryProcessTick(minIntervalSeconds);
+
+      if (result === null) {
+        console.log(`[TICK SERVER] Skipped — another instance already processed this tick`);
+        return;
+      }
+
       const duration = Date.now() - startTime;
 
       console.log(`[TICK ${result.tick}] Processed in ${duration}ms, ${result.events.length} events`);

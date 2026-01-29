@@ -650,6 +650,29 @@ curl -H "X-Admin-Key: your-secret" http://localhost:3000/admin/players?sort=acti
 curl -H "X-Admin-Key: your-secret" http://localhost:3000/admin/activity?limit=50
 ```
 
+## Development & Deployment
+
+### Branch Strategy
+
+| Branch | Purpose | Deploys to |
+|--------|---------|------------|
+| `main` | Production | Railway production environment |
+| `dev` | Testing | Railway development environment (separate Turso DB) |
+
+**Workflow:**
+1. Create a feature branch from `dev`
+2. Open a PR into `dev` — test on the dev environment
+3. When verified, open a PR from `dev` into `main` — deploys to production
+
+### Zero-Downtime Deploys
+
+Production deploys are safe mid-season:
+
+- **API server**: Railway does rolling deploys — new instance starts, passes health check, old one drains. No downtime.
+- **Tick server**: Uses idempotent tick claiming — if two instances overlap during a deploy, only one processes each tick. The guard prevents double-processing by checking `last_tick_at` timestamp before incrementing.
+
+The admin `POST /admin/tick` endpoint bypasses the idempotency guard (for manual tick advancement during testing).
+
 ## License
 
 MIT

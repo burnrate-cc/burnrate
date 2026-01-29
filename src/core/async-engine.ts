@@ -21,8 +21,23 @@ export class AsyncGameEngine {
   // TICK PROCESSING
   // ============================================================================
 
+  /**
+   * Try to process the next tick with idempotency guard.
+   * Returns null if another instance already processed this tick recently.
+   * Used by the tick server to prevent double-processing during deploys.
+   */
+  async tryProcessTick(minIntervalSeconds: number): Promise<{ tick: number; events: GameEvent[] } | null> {
+    const tick = await this.db.tryClaimTick(minIntervalSeconds);
+    if (tick === null) return null;
+    return this._processTickWork(tick);
+  }
+
   async processTick(): Promise<{ tick: number; events: GameEvent[] }> {
     const tick = await this.db.incrementTick();
+    return this._processTickWork(tick);
+  }
+
+  private async _processTickWork(tick: number): Promise<{ tick: number; events: GameEvent[] }> {
     const events: GameEvent[] = [];
 
     events.push(await this.recordEvent('tick', null, 'system', { tick }));

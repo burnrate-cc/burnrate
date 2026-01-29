@@ -69,7 +69,8 @@ export class TursoDatabase {
         id INTEGER PRIMARY KEY CHECK (id = 1),
         current_tick INTEGER NOT NULL DEFAULT 0,
         season_number INTEGER NOT NULL DEFAULT 1,
-        season_week INTEGER NOT NULL DEFAULT 1
+        season_week INTEGER NOT NULL DEFAULT 1,
+        last_tick_at TEXT
       )`,
 
       // Zones
@@ -374,6 +375,18 @@ export class TursoDatabase {
     for (const sql of statements) {
       await this.client.execute(sql);
     }
+
+    // Migrations for existing databases
+    await this.runMigrations();
+  }
+
+  private async runMigrations(): Promise<void> {
+    // Add last_tick_at column if missing (tick idempotency for zero-downtime deploys)
+    try {
+      await this.client.execute(`ALTER TABLE world ADD COLUMN last_tick_at TEXT`);
+    } catch {
+      // Column already exists — ignore
+    }
   }
 
   // ============================================================================
@@ -386,7 +399,30 @@ export class TursoDatabase {
   }
 
   async incrementTick(): Promise<number> {
-    await this.client.execute('UPDATE world SET current_tick = current_tick + 1 WHERE id = 1');
+    await this.client.execute(
+      `UPDATE world SET current_tick = current_tick + 1, last_tick_at = datetime('now') WHERE id = 1`
+    );
+    return this.getCurrentTick();
+  }
+
+  /**
+   * Try to claim the next tick. Returns the new tick number if claimed,
+   * or null if another instance already processed it recently.
+   * Uses last_tick_at as a guard — skips if a tick was processed within
+   * the given minimum interval (in seconds).
+   */
+  async tryClaimTick(minIntervalSeconds: number): Promise<number | null> {
+    // Atomically check and update: only increment if enough time has passed
+    const result = await this.client.execute({
+      sql: `UPDATE world SET current_tick = current_tick + 1, last_tick_at = datetime('now')
+            WHERE id = 1 AND (last_tick_at IS NULL OR unixepoch('now') - unixepoch(last_tick_at) >= ?)`,
+      args: [minIntervalSeconds]
+    });
+
+    if (result.rowsAffected === 0) {
+      return null; // Another instance already processed this tick
+    }
+
     return this.getCurrentTick();
   }
 
