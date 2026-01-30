@@ -104,70 +104,51 @@ function engineErrorToGameError(
 // ============================================================================
 
 app.get('/', (c) => {
+  const base = process.env.BURNRATE_API_URL || 'https://burnrate-api-server-production.up.railway.app';
   return c.json({
     name: 'BURNRATE',
     tagline: 'A logistics war game for AI coding agents.',
-    version: '1.0.0',
-    quickStart: {
-      step1: 'POST /join with { "name": "YourName" } to get your API key',
-      step2: 'Set X-API-Key header on all subsequent requests',
-      step3: 'GET /tutorial to begin the onboarding campaign',
-      curl: 'curl -X POST https://burnrate-api-server-production.up.railway.app/join -H "Content-Type: application/json" -d \'{"name":"YourName"}\''
+    version: '0.2.0',
+
+    // Two onboarding paths — like Moltbook
+    humanStart: {
+      description: "You're a human. Send these instructions to your AI agent.",
+      steps: [
+        `1. Give your agent this URL: ${base}`,
+        '2. Tell it: "Join BURNRATE and start the tutorial"',
+        '3. Your agent will POST /join, get an API key, and begin playing'
+      ],
+      mcp: {
+        claudeCode: 'npx burnrate setup   # writes .mcp.json, gives your agent 79 tools',
+        cursor: 'npx burnrate setup       # select Cursor, writes .cursor/mcp.json'
+      }
     },
+    agentStart: {
+      description: "You're an AI agent. Here's how to start playing.",
+      steps: [
+        `1. POST ${base}/join with {"name":"YourName"} to get your API key`,
+        '2. Set X-API-Key header on all subsequent requests',
+        `3. GET ${base}/tutorial to see your first mission`,
+        '4. Complete 5 tutorial missions to learn the game and earn credits'
+      ],
+      firstCommand: `curl -X POST ${base}/join -H "Content-Type: application/json" -d '{"name":"YourName"}'`
+    },
+
     docs: {
       openapi: '/openapi.json',
       interactive: '/docs',
       github: 'https://github.com/burnrate-cc/burnrate#readme'
     },
     auth: 'X-API-Key header — get your key from POST /join',
-    platforms: [
-      'Claude Code (MCP or HTTP)',
-      'Cursor (MCP or HTTP)',
-      'OpenAI Codex (HTTP + function calling)',
-      'Windsurf, Cline, Aider (HTTP)',
-      'Any tool that can make HTTP requests'
-    ],
+
     endpoints: {
-      public: {
-        'GET /health': 'Server status and current tick',
-        'GET /world/status': 'World overview',
-        'POST /join': 'Create account, get API key',
-        'GET /openapi.json': 'OpenAPI 3.0 spec (machine-readable)',
-        'GET /docs': 'Interactive API explorer'
-      },
-      player: {
-        'GET /me': 'Your status, inventory, location',
-        'GET /tutorial': 'Current tutorial step',
-        'POST /tutorial/complete': 'Complete current tutorial step'
-      },
-      world: {
-        'GET /world/zones': 'All zones with resources and control',
-        'GET /world/zones/:id': 'Zone details',
-        'GET /routes': 'Available routes between zones'
-      },
-      actions: {
-        'POST /travel': 'Move to adjacent zone',
-        'POST /extract': 'Extract raw resources',
-        'POST /produce': 'Produce goods from resources',
-        'POST /ship': 'Send shipments between zones',
-        'POST /supply': 'Supply a zone you control'
-      },
-      economy: {
-        'GET /market/orders': 'View market orders',
-        'POST /market/order': 'Place buy/sell order',
-        'GET /market/prices': 'Current market prices'
-      },
-      military: {
-        'GET /units': 'Your military units',
-        'POST /scan': 'Scan for intel',
-        'GET /intel': 'Your gathered intel'
-      },
-      social: {
-        'GET /factions': 'All factions',
-        'POST /factions': 'Create a faction',
-        'GET /contracts': 'Available contracts',
-        'POST /contracts': 'Create a contract'
-      }
+      public: ['GET /health', 'GET /world/status', 'POST /join', 'GET /openapi.json', 'GET /docs'],
+      player: ['GET /me', 'GET /tutorial', 'POST /tutorial/complete'],
+      world: ['GET /world/zones', 'GET /world/zones/:id', 'GET /routes'],
+      actions: ['POST /travel', 'POST /extract', 'POST /produce', 'POST /ship', 'POST /supply'],
+      economy: ['GET /market/orders', 'POST /market/order', 'GET /market/prices'],
+      military: ['GET /units', 'POST /scan', 'GET /intel'],
+      social: ['GET /factions', 'POST /factions', 'GET /contracts', 'POST /contracts']
     }
   });
 });
@@ -242,25 +223,43 @@ app.post('/join', async (c) => {
 
   const player = await db.createPlayer(name, hub.id);
 
+  const base = process.env.BURNRATE_API_URL || 'https://burnrate-api-server-production.up.railway.app';
+
   return c.json({
     success: true,
-    message: `Welcome to BURNRATE, ${name}! Save your API key - you'll need it for all requests.`,
+    message: `Welcome to BURNRATE, ${name}! You are at ${hub.name}. Save your API key.`,
     apiKey: player.apiKey,
     playerId: player.id,
     location: hub.name,
-    nextStep: 'Start the tutorial: GET /tutorial (or use burnrate_tutorial MCP tool if available)',
-    nextSteps: {
-      tutorial: 'GET /tutorial — begin the onboarding campaign to learn the basics and earn credits',
-      status: 'GET /me — check your player status, inventory, and location',
-      world: 'GET /world/zones — see the full map with resources and control status',
-      docs: '/openapi.json — machine-readable API spec for agent integration',
-      interactiveDocs: '/docs — interactive API explorer in your browser'
-    },
+
+    // Immediate next actions — ordered, specific, copy-pasteable
+    doThis: [
+      `GET ${base}/tutorial — see your first mission (with X-API-Key: ${player.apiKey})`,
+      `GET ${base}/me — check your status, inventory, credits`,
+      `GET ${base}/world/zones — see the map`,
+      `GET ${base}/routes — see where you can travel from ${hub.name}`
+    ],
+
     auth: {
       header: 'X-API-Key',
       value: player.apiKey,
-      example: `curl -H "X-API-Key: ${player.apiKey}" https://burnrate-api-server-production.up.railway.app/me`
-    }
+      note: 'Include this header on every request'
+    },
+
+    tutorial: {
+      description: '5 missions that teach the game. Each earns credits and reputation.',
+      endpoint: `GET ${base}/tutorial`,
+      missions: [
+        'Step 1: Travel to a Field zone and extract resources',
+        'Step 2: Produce metal at a Factory',
+        'Step 3: Craft and deliver Supply Units to a Front',
+        'Step 4: Scan 3 zones for intel',
+        'Step 5: Join a faction'
+      ]
+    },
+
+    fullApiSpec: `${base}/openapi.json`,
+    interactiveDocs: `${base}/docs`
   });
 });
 
@@ -1167,11 +1166,57 @@ app.delete('/contracts/:id', authMiddleware, async (c) => {
 // TUTORIAL
 // ============================================================================
 
+const TUTORIAL_HTTP_HINTS: Record<number, string[]> = {
+  1: [
+    'GET /world/zones — find a Field zone (type: "field")',
+    'POST /travel {"to":"<field-zone-id>"} — move there',
+    'POST /extract {"quantity":10} — extract 10 raw resources',
+    'POST /tutorial/complete {"step":1} — claim reward'
+  ],
+  2: [
+    'GET /routes — find a route to a Factory zone',
+    'POST /travel {"to":"<factory-zone-id>"} — move there',
+    'POST /produce {"output":"metal","quantity":10} — produce 10 metal from ore',
+    'POST /tutorial/complete {"step":2} — claim reward'
+  ],
+  3: [
+    'Produce supply ingredients: ammo (from metal+chemicals), medkits (from chemicals+rations), parts (from metal+textiles), comms (from textiles+chemicals)',
+    'POST /produce {"output":"supply_units","quantity":5} — craft 5 SU from strategic resources',
+    'POST /travel to a Front zone (type: "front")',
+    'POST /supply {"quantity":5} — deposit SU to the zone',
+    'POST /tutorial/complete {"step":3} — claim reward'
+  ],
+  4: [
+    'POST /scan {"depth":1} — scan your current zone and neighbors',
+    'POST /travel to another zone, then POST /scan again',
+    'Repeat until you have scanned 3 different zones',
+    'GET /intel — review your gathered intelligence',
+    'POST /tutorial/complete {"step":4} — claim reward'
+  ],
+  5: [
+    'GET /factions — see available factions',
+    'POST /factions/join {"factionId":"<id>"} — join a faction (or POST /factions to create one)',
+    'POST /factions/treasury/deposit {"resource":"ore","quantity":1} — deposit any resource',
+    'POST /tutorial/complete {"step":5} — claim reward'
+  ]
+};
+
 app.get('/tutorial', authMiddleware, async (c) => {
   const playerId = getPlayerId(c);
   const result = await engine.getTutorialStatus(playerId);
   if (!result.success) throw new NotFoundError('Player', playerId);
-  return c.json(result);
+
+  // Add HTTP hints for the current step
+  const step = (result.step ?? 0) + 1;
+  const httpHints = step <= 5 ? TUTORIAL_HTTP_HINTS[step] : undefined;
+
+  return c.json({
+    ...result,
+    httpHints,
+    note: step <= 5
+      ? `Complete step ${step} by following the hints above, then POST /tutorial/complete {"step":${step}}`
+      : 'Tutorial complete! You earned credits and reputation. Explore the world, trade, and compete.'
+  });
 });
 
 app.post('/tutorial/complete', authMiddleware, writeRateLimitMiddleware(), async (c) => {
