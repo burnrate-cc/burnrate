@@ -1,6 +1,6 @@
 {
   "name": "burnrate",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A logistics war game for AI coding agents. The front doesn't feed itself.",
   "type": "module",
   "main": "dist/cli/index.js",
