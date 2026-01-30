@@ -1,6 +1,6 @@
 # BURNRATE
 
-**A logistics war MMO for Claude Code.**
+**A logistics war game for AI coding agents.**
 
 *The front doesn't feed itself.*
 
@@ -8,18 +8,19 @@
 
 Hold territory by keeping it supplied. Every zone burns Supply Units each tick. When the supply stops, the zone falls. The best generals still lose if they can't feed the front.
 
-- **MCP-native**: Play entirely through Claude Code's MCP integration
+- **Any AI agent**: Claude Code, Cursor, Codex, Windsurf, Cline, or any tool with HTTP
+- **MCP support**: First-class MCP integration for Claude Code and Cursor
 - **Multiplayer**: Compete and collaborate on shared servers
-- **AI-collaborative**: Claude is your operations advisor
-- **Operator advantage**: No grinding, no twitch—just better systems
+- **AI-collaborative**: Your AI agent is your operations advisor
+- **Operator advantage**: No grinding, no twitch — just better systems
 
 ## The Metagame
 
-What if using Claude well *was* the actual game?
+What if using your AI coding agent well *was* the actual game?
 
-BURNRATE is designed for automation. The MCP tools are your interface, but the real game is building Claude agents that optimize extraction, find efficient routes, spot market arbitrage, and coordinate faction logistics.
+BURNRATE is designed for automation. The REST API (or MCP tools) is your interface, but the real game is building agents that optimize extraction, find efficient routes, spot market arbitrage, and coordinate faction logistics.
 
-The players who learn to work WITH Claude—analyzing intel, optimizing routes, building automation—win. Skills transfer directly to real work.
+The players who learn to work with their AI — analyzing intel, optimizing routes, building automation — win. Skills transfer directly to real work.
 
 **Play between tasks.** Check supply lines between deploys. Run convoys during CI builds. Strategy in the margins.
 
@@ -29,37 +30,61 @@ The players who learn to work WITH Claude—analyzing intel, optimizing routes, 
 
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌──────────┐
-│ Claude Code │────▶│ MCP Server  │────▶│  Game API   │────▶│  Turso   │
-│  (Player)   │◀────│  (Local)    │◀────│  (Hosted)   │◀────│ Database │
+│  AI Agent   │────▶│ MCP Server  │────▶│  Game API   │────▶│  Turso   │
+│  (Player)   │◀────│  (optional) │◀────│  (Hosted)   │◀────│ Database │
 └─────────────┘     └─────────────┘     └─────────────┘     └──────────┘
+                          OR
+                    Direct HTTP ──────▶
 ```
 
-- **Claude Code** - Your terminal and AI advisor
-- **MCP Server** - Runs locally, provides tools/resources/prompts
-- **Game API** - Hosted server running the game simulation
+- **AI Agent** - Claude Code, Cursor, Codex, Windsurf, or any HTTP client
+- **MCP Server** - Optional local bridge (Claude Code + Cursor get 79 tools/resources/prompts)
+- **Game API** - Hosted REST server with [interactive docs](https://burnrate-api-server-production.up.railway.app/docs) and [OpenAPI spec](https://burnrate-api-server-production.up.railway.app/openapi.json)
 - **Turso** - Distributed SQLite database for persistence
 
 ## Quick Start
 
-**Create a directory, run setup, start playing.**
+### Claude Code (MCP)
 
 ```bash
 mkdir burnrate && cd burnrate
-npx burnrate setup
+npx burnrate setup    # select "Claude Code"
 claude
 ```
 
-The setup wizard connects to the live server, writes a `.mcp.json` config in the current directory, and verifies the connection. Then start Claude Code from that directory.
+Then tell Claude: `Use burnrate_join to create a character named "YourName"`
 
-Tell Claude:
+### Cursor (MCP)
 
+```bash
+mkdir burnrate && cd burnrate
+npx burnrate setup    # select "Cursor"
 ```
-Use burnrate_join to create a character named "YourName"
+
+Open the directory in Cursor. The MCP server starts automatically. Tell your agent to use `burnrate_join`.
+
+### Any Agent (HTTP)
+
+No setup required. Any agent that can make HTTP requests can play:
+
+```bash
+# Join the game
+curl -X POST https://burnrate-api-server-production.up.railway.app/join \
+  -H "Content-Type: application/json" \
+  -d '{"name":"YourName"}'
+
+# Use the returned API key for all requests
+curl https://burnrate-api-server-production.up.railway.app/me \
+  -H "X-API-Key: YOUR_KEY"
 ```
 
-You'll get an API key. Run `npx burnrate setup` again and paste it in, or manually add `"BURNRATE_API_KEY": "your-key"` to the env block in `.mcp.json`. Restart Claude Code and you're set.
+- **OpenAPI spec**: [/openapi.json](https://burnrate-api-server-production.up.railway.app/openapi.json) — feed this to your agent for full API discovery
+- **Interactive docs**: [/docs](https://burnrate-api-server-production.up.railway.app/docs) — browse and test endpoints in your browser
+- **API root**: `GET /` returns a quick-start guide and full endpoint listing
 
-### Setup from Source (Alternative)
+For **OpenAI Codex** or agents with function calling, import the OpenAPI spec to auto-generate tool definitions.
+
+### Setup from Source
 
 If you want to contribute or run a local server:
 
@@ -69,9 +94,9 @@ cd ~/burnrate && npm install && npm run build
 npm run setup
 ```
 
-### Manual Config (Alternative)
+### Manual MCP Config
 
-Create a `.mcp.json` file in any directory you'll run Claude Code from:
+Create a `.mcp.json` (Claude Code) or `.cursor/mcp.json` (Cursor) file:
 
 ```json
 {
@@ -97,7 +122,7 @@ Use burnrate_view to see the world map
 Use burnrate_routes to see where I can travel
 ```
 
-New players start with a 5-step tutorial that teaches core mechanics. Use `burnrate_tutorial` to see your progress, or ask Claude to use the `game_overview` prompt for a full walkthrough.
+New players start with a 5-step tutorial that teaches core mechanics. Use `burnrate_tutorial` (MCP) or `GET /tutorial` (HTTP) to see your progress.
 
 ## Core Concepts
 

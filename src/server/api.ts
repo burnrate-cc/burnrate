@@ -21,6 +21,7 @@ import {
   ContractCreateSchema, EscortAssignSchema, RaiderDeploySchema, UnitSellSchema
 } from './validation.js';
 import { rateLimitMiddleware, tierRateLimitMiddleware, writeRateLimitMiddleware } from './rate-limit.js';
+import { openApiSpec } from './openapi.js';
 
 let db: TursoDatabase;
 let engine: AsyncGameEngine;
@@ -105,27 +106,92 @@ function engineErrorToGameError(
 app.get('/', (c) => {
   return c.json({
     name: 'BURNRATE',
-    tagline: 'The front doesn\'t feed itself.',
+    tagline: 'A logistics war game for AI coding agents.',
     version: '1.0.0',
-    docs: 'https://github.com/burnrate-cc/burnrate#readme',
+    quickStart: {
+      step1: 'POST /join with { "name": "YourName" } to get your API key',
+      step2: 'Set X-API-Key header on all subsequent requests',
+      step3: 'GET /tutorial to begin the onboarding campaign',
+      curl: 'curl -X POST https://burnrate-api-server-production.up.railway.app/join -H "Content-Type: application/json" -d \'{"name":"YourName"}\''
+    },
+    docs: {
+      openapi: '/openapi.json',
+      interactive: '/docs',
+      github: 'https://github.com/burnrate-cc/burnrate#readme'
+    },
+    auth: 'X-API-Key header — get your key from POST /join',
+    platforms: [
+      'Claude Code (MCP or HTTP)',
+      'Cursor (MCP or HTTP)',
+      'OpenAI Codex (HTTP + function calling)',
+      'Windsurf, Cline, Aider (HTTP)',
+      'Any tool that can make HTTP requests'
+    ],
     endpoints: {
-      health: 'GET /health',
-      join: 'POST /join { "name": "YourName" }',
-      status: 'GET /me',
-      world: 'GET /world/zones',
-      routes: 'GET /routes',
-      travel: 'POST /travel { "to": "zone-id" }',
-      extract: 'POST /extract { "quantity": 10 }',
-      produce: 'POST /produce { "output": "metal", "quantity": 5 }',
-      ship: 'POST /ship { "type": "courier", "path": [...], "cargo": {...} }',
-      market: 'POST /market/order, GET /market/orders',
-      units: 'GET /units',
-      intel: 'POST /scan, GET /intel',
-      factions: 'GET /factions, POST /factions',
-      contracts: 'GET /contracts, POST /contracts',
-      tutorial: 'GET /tutorial, POST /tutorial/complete'
+      public: {
+        'GET /health': 'Server status and current tick',
+        'GET /world/status': 'World overview',
+        'POST /join': 'Create account, get API key',
+        'GET /openapi.json': 'OpenAPI 3.0 spec (machine-readable)',
+        'GET /docs': 'Interactive API explorer'
+      },
+      player: {
+        'GET /me': 'Your status, inventory, location',
+        'GET /tutorial': 'Current tutorial step',
+        'POST /tutorial/complete': 'Complete current tutorial step'
+      },
+      world: {
+        'GET /world/zones': 'All zones with resources and control',
+        'GET /world/zones/:id': 'Zone details',
+        'GET /routes': 'Available routes between zones'
+      },
+      actions: {
+        'POST /travel': 'Move to adjacent zone',
+        'POST /extract': 'Extract raw resources',
+        'POST /produce': 'Produce goods from resources',
+        'POST /ship': 'Send shipments between zones',
+        'POST /supply': 'Supply a zone you control'
+      },
+      economy: {
+        'GET /market/orders': 'View market orders',
+        'POST /market/order': 'Place buy/sell order',
+        'GET /market/prices': 'Current market prices'
+      },
+      military: {
+        'GET /units': 'Your military units',
+        'POST /scan': 'Scan for intel',
+        'GET /intel': 'Your gathered intel'
+      },
+      social: {
+        'GET /factions': 'All factions',
+        'POST /factions': 'Create a faction',
+        'GET /contracts': 'Available contracts',
+        'POST /contracts': 'Create a contract'
+      }
     }
   });
+});
+
+// OpenAPI spec
+app.get('/openapi.json', (c) => {
+  return c.json(openApiSpec);
+});
+
+// Interactive API docs (Scalar)
+app.get('/docs', (c) => {
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <title>BURNRATE API Docs</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+</head>
+<body>
+  <script id="api-reference" data-url="/openapi.json"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+</body>
+</html>`;
+  return c.html(html);
 });
 
 app.get('/health', async (c) => {
@@ -182,7 +248,19 @@ app.post('/join', async (c) => {
     apiKey: player.apiKey,
     playerId: player.id,
     location: hub.name,
-    nextStep: 'Ask Claude: "Use burnrate_tutorial to start the tutorial" — it will walk you through the basics and earn you credits.'
+    nextStep: 'Start the tutorial: GET /tutorial (or use burnrate_tutorial MCP tool if available)',
+    nextSteps: {
+      tutorial: 'GET /tutorial — begin the onboarding campaign to learn the basics and earn credits',
+      status: 'GET /me — check your player status, inventory, and location',
+      world: 'GET /world/zones — see the full map with resources and control status',
+      docs: '/openapi.json — machine-readable API spec for agent integration',
+      interactiveDocs: '/docs — interactive API explorer in your browser'
+    },
+    auth: {
+      header: 'X-API-Key',
+      value: player.apiKey,
+      example: `curl -H "X-API-Key: ${player.apiKey}" https://burnrate-api-server-production.up.railway.app/me`
+    }
   });
 });
 

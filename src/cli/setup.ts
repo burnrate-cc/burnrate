@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * BURNRATE Setup CLI
- * Configures Claude Code MCP settings for BURNRATE
+ * Configures MCP settings for Claude Code, Cursor, or shows HTTP setup
  *
  * Usage: npx burnrate setup
  */
@@ -29,9 +29,16 @@ async function main() {
   console.log(`
 ╔══════════════════════════════════════════════════════════════╗
 ║                    BURNRATE SETUP                            ║
-║              The front doesn't feed itself.                  ║
+║        A logistics war game for AI coding agents.           ║
 ╚══════════════════════════════════════════════════════════════╝
 `);
+
+  // 0. Detect platform
+  const platforms = ['Claude Code (MCP)', 'Cursor (MCP)', 'HTTP only (Codex, Windsurf, local models, curl)'];
+  console.log('  Which platform are you using?');
+  platforms.forEach((p, i) => console.log(`    ${i + 1}. ${p}`));
+  const platformChoice = await ask('Platform (1/2/3)', '1');
+  const platform = parseInt(platformChoice) || 1;
 
   // 1. Get API URL
   const apiUrl = await ask(
@@ -83,8 +90,32 @@ async function main() {
     }
   }
 
-  // 5. Determine MCP server command
-  // Detect whether we're running from source (git clone) or npm install
+  // 5. HTTP-only path — no MCP config needed
+  if (platform === 3) {
+    console.log(`
+╔══════════════════════════════════════════════════════════════╗
+║                     SETUP COMPLETE                           ║
+╠══════════════════════════════════════════════════════════════╣
+║                                                              ║
+║  BURNRATE works with any HTTP client.                        ║
+║  Base URL: ${apiUrl.padEnd(46)}║
+║  Auth:     X-API-Key header                                  ║
+║                                                              ║
+║  Quick start:                                                ║
+║    curl -X POST ${(apiUrl + '/join').padEnd(40)}║
+║      -H "Content-Type: application/json"                     ║
+║      -d '{"name":"YourName"}'                                ║
+║                                                              ║
+║  API spec:  ${(apiUrl + '/openapi.json').padEnd(44)}║
+║  Docs:      ${(apiUrl + '/docs').padEnd(44)}║
+║                                                              ║
+╚══════════════════════════════════════════════════════════════╝
+`);
+    rl.close();
+    return;
+  }
+
+  // 6. Determine MCP server command (for Claude Code and Cursor)
   const distPath = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', 'mcp', 'server.js');
   const isFromSource = !distPath.includes('node_modules');
 
@@ -92,31 +123,22 @@ async function main() {
   let mcpArgs: string[];
 
   if (isFromSource && fs.existsSync(distPath)) {
-    // Running from cloned source — use direct node path
     mcpCommand = 'node';
     mcpArgs = [distPath];
     console.log(`\nMCP server: ${distPath} (source)`);
   } else {
-    // Installed via npx/npm — find the global or local node + server path
-    // Using absolute paths is most reliable for MCP servers
-    const nodePath = process.execPath; // absolute path to current node binary
-    // Resolve the server.js path relative to this setup script
+    const nodePath = process.execPath;
     const serverPath = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', 'mcp', 'server.js');
     if (fs.existsSync(serverPath)) {
       mcpCommand = nodePath;
       mcpArgs = [serverPath];
       console.log(`\nMCP server: ${serverPath}`);
     } else {
-      // Fallback: use npx
       mcpCommand = 'npx';
       mcpArgs = ['-y', 'burnrate', 'mcp'];
       console.log(`\nMCP server: npx burnrate mcp (npm package)`);
     }
   }
-
-  // 6. Write .mcp.json in the current directory
-  // Claude Code reads MCP server config from .mcp.json at the project level
-  const mcpConfigPath = path.join(process.cwd(), '.mcp.json');
 
   const env: Record<string, string> = {
     BURNRATE_API_URL: apiUrl
@@ -125,22 +147,58 @@ async function main() {
     env.BURNRATE_API_KEY = apiKey;
   }
 
-  const mcpConfig: any = {
-    mcpServers: {
-      burnrate: {
-        type: 'stdio',
-        command: mcpCommand,
-        args: mcpArgs,
-        env
-      }
-    }
+  const mcpServerConfig = {
+    type: 'stdio' as const,
+    command: mcpCommand,
+    args: mcpArgs,
+    env
   };
 
-  fs.writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2) + '\n');
-  console.log(`\n✓ MCP config written to ${mcpConfigPath}`);
+  // 7. Write config to the appropriate location
+  if (platform === 2) {
+    // Cursor: write to .cursor/mcp.json in project root
+    const cursorDir = path.join(process.cwd(), '.cursor');
+    if (!fs.existsSync(cursorDir)) {
+      fs.mkdirSync(cursorDir, { recursive: true });
+    }
+    const cursorConfigPath = path.join(cursorDir, 'mcp.json');
+    const cursorConfig = {
+      mcpServers: { burnrate: mcpServerConfig }
+    };
+    fs.writeFileSync(cursorConfigPath, JSON.stringify(cursorConfig, null, 2) + '\n');
+    console.log(`\n✓ MCP config written to ${cursorConfigPath}`);
+  } else {
+    // Claude Code: write to .mcp.json in project root
+    const mcpConfigPath = path.join(process.cwd(), '.mcp.json');
+    const mcpConfig = {
+      mcpServers: { burnrate: mcpServerConfig }
+    };
+    fs.writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2) + '\n');
+    console.log(`\n✓ MCP config written to ${mcpConfigPath}`);
+  }
 
-  // 7. Summary
-  console.log(`
+  // 8. Summary
+  if (platform === 2) {
+    console.log(`
+╔══════════════════════════════════════════════════════════════╗
+║                     SETUP COMPLETE                           ║
+╠══════════════════════════════════════════════════════════════╣
+║                                                              ║
+║  Open Cursor in this directory. The MCP server will          ║
+║  start automatically.                                        ║
+║                                                              ║
+║  Tell your agent:                                            ║
+║    "Use burnrate_join to create a character named MyName"    ║
+║                                                              ║
+║  Or if you already have an API key:                          ║
+║    "Use burnrate_status to see my inventory"                 ║
+║                                                              ║
+║  API docs:  ${(apiUrl + '/docs').padEnd(44)}║
+║                                                              ║
+╚══════════════════════════════════════════════════════════════╝
+`);
+  } else {
+    console.log(`
 ╔══════════════════════════════════════════════════════════════╗
 ║                     SETUP COMPLETE                           ║
 ╠══════════════════════════════════════════════════════════════╣
@@ -156,6 +214,7 @@ async function main() {
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
 `);
+  }
 
   rl.close();
 }
