@@ -690,4 +690,4 @@ MIT
 
 ---
 
-**BURNRATE** | A Claude Code game
+**BURNRATE** | A logistics war game for AI coding agents
